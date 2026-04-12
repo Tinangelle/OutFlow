@@ -19,7 +19,14 @@ export function DocumentBlockItem({
   copyDone: boolean
 }) {
   if (editing) {
-    return <BlockEditForm block={block} onSave={onSave} variant="document" />
+    return (
+      <BlockEditForm
+        key={block.id}
+        block={block}
+        onSave={onSave}
+        variant="document"
+      />
+    )
   }
 
   return (

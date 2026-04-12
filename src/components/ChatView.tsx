@@ -24,7 +24,8 @@ import { ThemeToggle } from './ThemeToggle'
 type MainView = 'chat' | 'board' | 'document'
 
 export function ChatView() {
-  const { activeProject, addBlock, updateBlock, reorderBlocks } = useOutflow()
+  const { activeChat, activeChatBlocks, addBlock, updateBlock, reorderBlocks } =
+    useOutflow()
   const [mainView, setMainView] = useState<MainView>('chat')
   const [draft, setDraft] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -34,12 +35,7 @@ export function ChatView() {
   const endRef = useRef<HTMLDivElement>(null)
   const prevLen = useRef(0)
 
-  const sortedBlocks = useMemo(() => {
-    if (!activeProject) return []
-    return [...activeProject.blocks].sort(
-      (a, b) => a.orderIndex - b.orderIndex,
-    )
-  }, [activeProject])
+  const sortedBlocks = activeChatBlocks
 
   const documentText = useMemo(() => {
     return sortedBlocks
@@ -51,8 +47,12 @@ export function ChatView() {
   useLayoutEffect(() => {
     const el = taRef.current
     if (!el) return
+    const maxPx = Math.min(window.innerHeight * 0.4, 320)
     el.style.height = '0px'
-    el.style.height = `${el.scrollHeight}px`
+    const scrollH = el.scrollHeight
+    const nextH = Math.min(scrollH, maxPx)
+    el.style.height = `${nextH}px`
+    el.style.overflowY = scrollH > maxPx ? 'auto' : 'hidden'
   }, [draft])
 
   useEffect(() => {
@@ -162,7 +162,7 @@ export function ChatView() {
         <ThemeToggle />
       </header>
 
-      {mainView === 'document' && activeProject && (
+      {mainView === 'document' && activeChat && (
         <div className="flex shrink-0 items-center justify-end gap-2 border-b border-zinc-200 bg-white/80 px-4 py-2 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/80">
           <button
             type="button"
@@ -177,8 +177,8 @@ export function ChatView() {
       )}
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-        {!activeProject ? (
-          <p className="text-center text-sm text-zinc-500">请选择或创建一个项目</p>
+        {!activeChat ? (
+          <p className="text-center text-sm text-zinc-500">请选择或创建一个对话</p>
         ) : mainView === 'board' ? (
           <BoardView blocks={sortedBlocks} reorderBlocks={reorderBlocks} />
         ) : mainView === 'document' ? (
@@ -236,14 +236,14 @@ export function ChatView() {
                 onKeyDown={handleComposerKeyDown}
                 rows={1}
                 placeholder="输入内容…"
-                disabled={!activeProject}
-                className="max-h-[min(40vh,320px)] min-h-[44px] flex-1 resize-none bg-transparent py-2.5 pl-1 text-[15px] leading-relaxed text-zinc-900 outline-none placeholder:text-zinc-400 disabled:opacity-50 dark:text-zinc-100 dark:placeholder:text-zinc-500"
+                disabled={!activeChat}
+                className="min-h-[44px] flex-1 resize-none overflow-hidden bg-transparent py-2.5 pl-1 text-[15px] leading-relaxed text-zinc-900 outline-none placeholder:text-zinc-400 disabled:opacity-50 dark:text-zinc-100 dark:placeholder:text-zinc-500"
                 aria-label="正文输入"
               />
               <button
                 type="button"
                 onClick={send}
-                disabled={!activeProject || !draft.trim()}
+                disabled={!activeChat || !draft.trim()}
                 className="mb-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-violet-600 text-white shadow-md transition hover:bg-violet-700 disabled:pointer-events-none disabled:opacity-40 dark:bg-violet-500 dark:hover:bg-violet-400"
                 title="发送（Cmd/Ctrl + Enter）"
                 aria-label="发送"

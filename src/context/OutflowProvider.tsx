@@ -5,9 +5,11 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { createBlock, createProject } from '../lib/factory'
+import { createBlock, createChat, createProject } from '../lib/factory'
+import { sortChatsByUpdated } from '../lib/normalize'
 import {
   loadPersisted,
+  normalizePersistedState,
   savePersisted,
   type PersistedState,
   type ThemeMode,
@@ -22,19 +24,32 @@ function systemTheme(): ThemeMode {
 
 function initialState(): PersistedState {
   const loaded = loadPersisted()
-  if (loaded && loaded.projects.length > 0) {
-    const active =
-      loaded.activeProjectId &&
-      loaded.projects.some((p) => p.id === loaded.activeProjectId)
-        ? loaded.activeProjectId
-        : loaded.projects[0].id
-    return { ...loaded, activeProjectId: active }
+  if (loaded) {
+    let chats = loaded.chats
+    let activeChatId = loaded.activeChatId
+    if (chats.length === 0) {
+      const c = createChat(null)
+      chats = [c]
+      activeChatId = c.id
+    } else if (
+      !activeChatId ||
+      !chats.some((c) => c.id === activeChatId)
+    ) {
+      activeChatId = sortChatsByUpdated(chats)[0]!.id
+    }
+    return normalizePersistedState({
+      ...loaded,
+      chats,
+      activeChatId,
+    })
   }
-  const p = createProject()
+  const chat = createChat(null)
   return {
-    version: 1,
-    projects: [p],
-    activeProjectId: p.id,
+    version: 2,
+    projects: [],
+    chats: [chat],
+    blocks: [],
+    activeChatId: chat.id,
     theme: systemTheme(),
   }
 }
@@ -47,8 +62,17 @@ export function OutflowProvider({ children }: { children: ReactNode }) {
     document.documentElement.classList.toggle('dark', state.theme === 'dark')
   }, [state])
 
-  const selectProject = useCallback((id: string) => {
-    setState((s) => ({ ...s, activeProjectId: id }))
+  const selectChat = useCallback((id: string) => {
+    setState((s) => (s.chats.some((c) => c.id === id) ? { ...s, activeChatId: id } : s))
+  }, [])
+
+  const newChat = useCallback(() => {
+    const c = createChat(null)
+    setState((s) => ({
+      ...s,
+      chats: [...s.chats, c],
+      activeChatId: c.id,
+    }))
   }, [])
 
   const newProject = useCallback(() => {
@@ -56,12 +80,11 @@ export function OutflowProvider({ children }: { children: ReactNode }) {
     setState((s) => ({
       ...s,
       projects: [...s.projects, p],
-      activeProjectId: p.id,
     }))
   }, [])
 
   const renameProject = useCallback((id: string, title: string) => {
-    const nextTitle = title.trim() || '未命名项目'
+    const nextTitle = title.trim() || '未命名文件夹'
     const now = Date.now()
     setState((s) => ({
       ...s,
@@ -72,17 +95,81 @@ export function OutflowProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const deleteProject = useCallback((id: string) => {
+    const now = Date.now()
+    setState((s) => ({
+      ...s,
+      projects: s.projects.filter((p) => p.id !== id),
+      chats: s.chats.map((c) =>
+        c.projectId !== id ? c : { ...c, projectId: null, updatedAt: now },
+      ),
+    }))
+  }, [])
+
+  const renameChat = useCallback((id: string, title: string) => {
+    const nextTitle = title.trim() || '新对话'
+    const now = Date.now()
+    setState((s) => ({
+      ...s,
+      chats: s.chats.map((c) =>
+        c.id !== id ? c : { ...c, title: nextTitle, updatedAt: now },
+      ),
+    }))
+  }, [])
+
+  const deleteChat = useCallback((id: string) => {
     setState((s) => {
-      const next = s.projects.filter((p) => p.id !== id)
-      if (next.length === 0) {
-        const p = createProject()
-        return { ...s, projects: [p], activeProjectId: p.id }
+      const nextChats = s.chats.filter((c) => c.id !== id)
+      const nextBlocks = s.blocks.filter((b) => b.chatId !== id)
+      if (nextChats.length === 0) {
+        const c = createChat(null)
+        return {
+          ...s,
+          chats: [c],
+          blocks: [],
+          activeChatId: c.id,
+        }
       }
-      const active =
-        s.activeProjectId === id ? next[0].id : s.activeProjectId
-      return { ...s, projects: next, activeProjectId: active }
+      const nextActive =
+        s.activeChatId === id
+          ? sortChatsByUpdated(nextChats)[0]!.id
+          : s.activeChatId
+      return {
+        ...s,
+        chats: nextChats,
+        blocks: nextBlocks,
+        activeChatId: nextActive,
+      }
     })
   }, [])
+
+  const moveChatToProject = useCallback(
+    (chatId: string, projectId: string | null) => {
+      const now = Date.now()
+      setState((s) => {
+        const chat = s.chats.find((c) => c.id === chatId)
+        if (!chat) return s
+        if (projectId !== null) {
+          if (!s.projects.some((p) => p.id === projectId)) return s
+          if (chat.projectId === projectId) return s
+        } else if (chat.projectId === null) {
+          return s
+        }
+        return {
+          ...s,
+          chats: s.chats.map((c) =>
+            c.id !== chatId ? c : { ...c, projectId, updatedAt: now },
+          ),
+          projects:
+            projectId !== null
+              ? s.projects.map((p) =>
+                  p.id !== projectId ? p : { ...p, updatedAt: now },
+                )
+              : s.projects,
+        }
+      })
+    },
+    [],
+  )
 
   const setTheme = useCallback((theme: ThemeMode) => {
     setState((s) => ({ ...s, theme }))
@@ -92,26 +179,17 @@ export function OutflowProvider({ children }: { children: ReactNode }) {
     const text = content.replace(/\r\n/g, '\n').trim()
     if (!text) return
     setState((s) => {
-      const pid = s.activeProjectId
-      if (!pid) return s
-      const proj = s.projects.find((p) => p.id === pid)
-      if (!proj) return s
-      const maxOrder = proj.blocks.reduce(
-        (m, b) => Math.max(m, b.orderIndex),
-        -1,
-      )
-      const block = createBlock(text, maxOrder + 1)
+      const cid = s.activeChatId
+      if (!cid || !s.chats.some((c) => c.id === cid)) return s
+      const inChat = s.blocks.filter((b) => b.chatId === cid)
+      const maxOrder = inChat.reduce((m, b) => Math.max(m, b.orderIndex), -1)
+      const block = createBlock(cid, text, maxOrder + 1)
       const now = Date.now()
       return {
         ...s,
-        projects: s.projects.map((p) =>
-          p.id !== pid
-            ? p
-            : {
-                ...p,
-                blocks: [...p.blocks, block],
-                updatedAt: now,
-              },
+        blocks: [...s.blocks, block],
+        chats: s.chats.map((c) =>
+          c.id !== cid ? c : { ...c, updatedAt: now },
         ),
       }
     })
@@ -120,71 +198,82 @@ export function OutflowProvider({ children }: { children: ReactNode }) {
   const updateBlock = useCallback((blockId: string, content: string) => {
     const text = content.replace(/\r\n/g, '\n')
     setState((s) => {
-      const pid = s.activeProjectId
-      if (!pid) return s
+      const cid = s.activeChatId
+      if (!cid) return s
       const now = Date.now()
+      const touches = s.blocks.some(
+        (b) => b.id === blockId && b.chatId === cid,
+      )
+      if (!touches) return s
       return {
         ...s,
-        projects: s.projects.map((p) => {
-          if (p.id !== pid) return p
-          return {
-            ...p,
-            blocks: p.blocks.map((b) =>
-              b.id !== blockId
-                ? b
-                : { ...b, content: text, updatedAt: now },
-            ),
-            updatedAt: now,
-          }
-        }),
+        blocks: s.blocks.map((b) =>
+          b.id !== blockId ? b : { ...b, content: text, updatedAt: now },
+        ),
+        chats: s.chats.map((c) =>
+          c.id !== cid ? c : { ...c, updatedAt: now },
+        ),
       }
     })
   }, [])
 
   const reorderBlocks = useCallback((orderedIds: string[]) => {
     setState((s) => {
-      const pid = s.activeProjectId
-      if (!pid) return s
+      const cid = s.activeChatId
+      if (!cid) return s
       const now = Date.now()
+      const inChat = s.blocks.filter((b) => b.chatId === cid)
+      const idSet = new Set(inChat.map((b) => b.id))
+      if (
+        orderedIds.length !== inChat.length ||
+        !orderedIds.every((id) => idSet.has(id))
+      ) {
+        return s
+      }
+      const byId = new Map(inChat.map((b) => [b.id, b]))
+      const reindexed = orderedIds.map((id, i) => {
+        const b = byId.get(id)!
+        return { ...b, orderIndex: i, updatedAt: now }
+      })
+      const rest = s.blocks.filter((b) => b.chatId !== cid)
       return {
         ...s,
-        projects: s.projects.map((p) => {
-          if (p.id !== pid) return p
-          const idSet = new Set(p.blocks.map((b) => b.id))
-          if (
-            orderedIds.length !== p.blocks.length ||
-            !orderedIds.every((id) => idSet.has(id))
-          ) {
-            return p
-          }
-          const byId = new Map(p.blocks.map((b) => [b.id, b]))
-          const blocks = orderedIds.map((id, i) => {
-            const b = byId.get(id)!
-            return { ...b, orderIndex: i, updatedAt: now }
-          })
-          return { ...p, blocks, updatedAt: now }
-        }),
+        blocks: [...rest, ...reindexed],
+        chats: s.chats.map((c) =>
+          c.id !== cid ? c : { ...c, updatedAt: now },
+        ),
       }
     })
   }, [])
 
-  const activeProject = useMemo(() => {
-    if (!state.activeProjectId) return null
-    return (
-      state.projects.find((p) => p.id === state.activeProjectId) ?? null
-    )
-  }, [state.projects, state.activeProjectId])
+  const activeChat = useMemo(() => {
+    if (!state.activeChatId) return null
+    return state.chats.find((c) => c.id === state.activeChatId) ?? null
+  }, [state.chats, state.activeChatId])
+
+  const activeChatBlocks = useMemo(() => {
+    if (!state.activeChatId) return []
+    return state.blocks
+      .filter((b) => b.chatId === state.activeChatId)
+      .sort((a, b) => a.orderIndex - b.orderIndex)
+  }, [state.blocks, state.activeChatId])
 
   const value = useMemo<OutflowContextValue>(
     () => ({
       projects: state.projects,
-      activeProject,
-      activeProjectId: state.activeProjectId,
+      chats: state.chats,
+      activeChat,
+      activeChatId: state.activeChatId,
+      activeChatBlocks,
       theme: state.theme,
-      selectProject,
+      selectChat,
+      newChat,
       newProject,
       renameProject,
       deleteProject,
+      renameChat,
+      deleteChat,
+      moveChatToProject,
       setTheme,
       addBlock,
       updateBlock,
@@ -192,13 +281,19 @@ export function OutflowProvider({ children }: { children: ReactNode }) {
     }),
     [
       state.projects,
-      state.activeProjectId,
+      state.chats,
+      state.activeChatId,
       state.theme,
-      activeProject,
-      selectProject,
+      activeChat,
+      activeChatBlocks,
+      selectChat,
+      newChat,
       newProject,
       renameProject,
       deleteProject,
+      renameChat,
+      deleteChat,
+      moveChatToProject,
       setTheme,
       addBlock,
       updateBlock,

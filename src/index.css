@@ -13,3 +13,40 @@ body {
   margin: 0;
   @apply bg-zinc-100 text-zinc-900 antialiased dark:bg-zinc-950 dark:text-zinc-100;
 }
+
+/* 全局滚动条（WebKit）：轨道透明、圆角滑块；深色模式低对比融入背景 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(15, 15, 20, 0.22) transparent;
+}
+
+.dark,
+.dark * {
+  scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  background-color: rgba(15, 15, 20, 0.22);
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  border: none;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.22),
+    rgba(255, 255, 255, 0.12)
+  );
+}

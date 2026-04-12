@@ -8,7 +8,9 @@
     <script>
       (function () {
         try {
-          var raw = localStorage.getItem('outflow.v1')
+          var raw =
+            localStorage.getItem('outflow.v2') ||
+            localStorage.getItem('outflow.v1')
           var dark = false
           if (raw) {
             var d = JSON.parse(raw)
