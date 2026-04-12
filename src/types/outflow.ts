@@ -8,6 +8,10 @@ export interface Block {
   orderIndex: number
   createdAt: number
   updatedAt: number
+  /** 由正文自动提取的 【词】 / #词，已去重 */
+  tags?: string[]
+  /** 有值表示已软删除（回收站） */
+  deletedAt?: number
 }
 
 /** 文件夹（类似 ChatGPT 侧栏中的 Project） */
@@ -16,6 +20,8 @@ export interface Project {
   title: string
   createdAt: number
   updatedAt: number
+  /** 有值表示已软删除（回收站） */
+  deletedAt?: number
 }
 
 /** 对话文件，可挂在某文件夹下或独立（projectId 为 null） */
@@ -25,4 +31,6 @@ export interface Chat {
   title: string
   createdAt: number
   updatedAt: number
+  /** 有值表示已软删除（回收站） */
+  deletedAt?: number
 }

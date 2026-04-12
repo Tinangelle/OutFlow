@@ -30,10 +30,10 @@ export function DocumentBlockItem({
   }
 
   return (
-    <div className="group relative">
+    <div className="group relative select-none">
       <button
         type="button"
-        className="absolute right-0 top-0 z-10 rounded-md p-1.5 text-zinc-400 opacity-100 transition hover:bg-zinc-100 hover:text-zinc-700 md:opacity-0 md:group-hover:opacity-100 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+        className="absolute right-0 top-0 z-10 select-none rounded-md p-1.5 text-zinc-400 opacity-100 transition hover:bg-zinc-100 hover:text-zinc-700 md:opacity-0 md:group-hover:opacity-100 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
         title={copyDone ? '已复制' : '复制当前块'}
         aria-label="复制当前块"
         onClick={(e) => {
@@ -53,7 +53,7 @@ export function DocumentBlockItem({
             onStartEdit(block.id)
           }
         }}
-        className="cursor-pointer rounded-lg pr-8 text-left outline-none transition hover:bg-zinc-100/80 focus-visible:ring-2 focus-visible:ring-violet-500 dark:hover:bg-zinc-900/50"
+        className="touch-callout-default cursor-pointer select-text rounded-lg pr-8 text-left outline-none transition hover:bg-zinc-100/80 focus-visible:ring-2 focus-visible:ring-violet-500 dark:hover:bg-zinc-900/50"
       >
         {block.content.trim() ? (
           <MarkdownContent className="prose prose-sm max-w-none dark:prose-invert prose-headings:font-semibold prose-p:my-3 prose-ul:my-3 prose-ol:my-3 prose-li:my-0.5">

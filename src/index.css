@@ -6,12 +6,20 @@
 html,
 body,
 #root {
-  height: 100%;
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
 }
 
 body {
   margin: 0;
+  -webkit-touch-callout: none;
   @apply bg-zinc-100 text-zinc-900 antialiased dark:bg-zinc-950 dark:text-zinc-100;
+}
+
+/* 正文区恢复 iOS 长按菜单（body 已禁用 touch-callout） */
+.touch-callout-default {
+  -webkit-touch-callout: default;
 }
 
 /* 全局滚动条（WebKit）：轨道透明、圆角滑块；深色模式低对比融入背景 */

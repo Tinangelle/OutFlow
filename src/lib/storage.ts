@@ -1,10 +1,17 @@
+import localforage from 'localforage'
 import type { Block, Chat, Project } from '../types/outflow'
-import { newId } from './ids'
+import { generateId } from './ids'
 import { sortChatsByUpdated, sortProjectsByUpdated } from './normalize'
+import { extractTagsFromContent } from './tags'
 
 export type ThemeMode = 'light' | 'dark'
 
-/** 当前持久化版本 */
+localforage.config({
+  name: 'OutFlowDB',
+  storeName: 'workspace',
+})
+
+/** 当前持久化版本（localforage / 曾用 localStorage 的 key） */
 export const STORAGE_KEY = 'outflow.v2'
 /** 旧版 key，仅用于一次性迁移 */
 const STORAGE_KEY_LEGACY_V1 = 'outflow.v1'
@@ -67,7 +74,13 @@ function sortBlocksInChat(blocks: Block[], chatId: string): Block[] {
 /** 按对话整理 Block 的 orderIndex，并丢弃孤儿块 */
 export function normalizePersistedState(state: PersistedState): PersistedState {
   const chatIds = new Set(state.chats.map((c) => c.id))
-  const kept = state.blocks.filter((b) => chatIds.has(b.chatId))
+  const kept = state.blocks
+    .filter((b) => chatIds.has(b.chatId))
+    .map((b) =>
+      b.tags === undefined
+        ? { ...b, tags: extractTagsFromContent(b.content) }
+        : b,
+    )
   const nextBlocks: Block[] = []
   for (const chat of state.chats) {
     nextBlocks.push(...sortBlocksInChat(kept, chat.id))
@@ -103,7 +116,7 @@ export function migrateV1ToV2(v1: PersistedStateV1): PersistedState {
       : chats[0]?.id ?? null
   if (!activeChatId && chats.length === 0) {
     const t = Date.now()
-    const id = newId()
+    const id = generateId()
     chats.push({
       id,
       projectId: null,
@@ -123,17 +136,18 @@ export function migrateV1ToV2(v1: PersistedStateV1): PersistedState {
   }
 }
 
-function parseV2(raw: string): PersistedState | null {
+function parsePersistedPayload(data: unknown): PersistedState | null {
   try {
-    const data = JSON.parse(raw) as unknown
+    const obj: unknown =
+      typeof data === 'string' ? JSON.parse(data) : data
     if (
-      !data ||
-      typeof data !== 'object' ||
-      (data as PersistedState).version !== 2
+      !obj ||
+      typeof obj !== 'object' ||
+      (obj as PersistedState).version !== 2
     ) {
       return null
     }
-    const d = data as PersistedState
+    const d = obj as PersistedState
     if (
       !Array.isArray(d.projects) ||
       !Array.isArray(d.chats) ||
@@ -147,7 +161,16 @@ function parseV2(raw: string): PersistedState | null {
   }
 }
 
-function loadAndMigrateLegacyV1(): PersistedState | null {
+/** 校验并规范化备份中的工作区快照（version 2 + projects/chats/blocks） */
+export function tryParsePersistedState(data: unknown): PersistedState | null {
+  return parsePersistedPayload(data)
+}
+
+async function saveToStore(state: PersistedState): Promise<void> {
+  await localforage.setItem(STORAGE_KEY, state)
+}
+
+async function loadAndMigrateLegacyV1FromLocalStorage(): Promise<PersistedState | null> {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_LEGACY_V1)
     if (!raw) return null
@@ -155,7 +178,7 @@ function loadAndMigrateLegacyV1(): PersistedState | null {
     if (data.version !== 1 || !Array.isArray(data.projects)) return null
     const migrated = migrateV1ToV2(data)
     const normalized = normalizePersistedState(migrated)
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized))
+    await saveToStore(normalized)
     localStorage.removeItem(STORAGE_KEY_LEGACY_V1)
     return normalized
   } catch {
@@ -163,21 +186,52 @@ function loadAndMigrateLegacyV1(): PersistedState | null {
   }
 }
 
-export function loadPersisted(): PersistedState | null {
+/** 若 IndexedDB 为空但 localStorage 仍有 v2 数据，则导入并清理 localStorage */
+async function migrateV2FromLocalStorageIfPresent(): Promise<PersistedState | null> {
   try {
-    const rawV2 = localStorage.getItem(STORAGE_KEY)
-    if (rawV2) {
-      const v2 = parseV2(rawV2)
-      if (v2) return v2
-    }
-    return loadAndMigrateLegacyV1()
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return null
+    const v2 = parsePersistedPayload(raw)
+    if (!v2) return null
+    await saveToStore(v2)
+    localStorage.removeItem(STORAGE_KEY)
+    return v2
   } catch {
     return null
   }
 }
 
-export function savePersisted(data: PersistedState): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
+export type LoadPersistedResult = {
+  data: PersistedState | null
+  /** IndexedDB / 迁移过程抛错时由调用方展示 */
+  error: string | null
+}
+
+function loadErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
+}
+
+/**
+ * 从 IndexedDB 读取；若无数据则从 localStorage 静默迁移（v2 或 v1）。
+ */
+export async function loadPersisted(): Promise<LoadPersistedResult> {
+  try {
+    const fromIdb = await localforage.getItem<unknown>(STORAGE_KEY)
+    const v2FromIdb = parsePersistedPayload(fromIdb)
+    if (v2FromIdb) return { data: v2FromIdb, error: null }
+
+    const fromLsV2 = await migrateV2FromLocalStorageIfPresent()
+    if (fromLsV2) return { data: fromLsV2, error: null }
+
+    const legacy = await loadAndMigrateLegacyV1FromLocalStorage()
+    return { data: legacy, error: null }
+  } catch (err) {
+    return { data: null, error: loadErrorMessage(err) }
+  }
+}
+
+export async function savePersisted(data: PersistedState): Promise<void> {
+  await saveToStore(data)
 }
 
 /** 侧栏展示顺序辅助 */

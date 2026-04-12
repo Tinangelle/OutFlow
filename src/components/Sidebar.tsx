@@ -1,12 +1,4 @@
-import {
-  DndContext,
-  type DragEndEvent,
-  PointerSensor,
-  useDraggable,
-  useDroppable,
-  useSensor,
-  useSensors,
-} from '@dnd-kit/core'
+import { useDraggable, useDroppable } from '@dnd-kit/core'
 import {
   ChevronDown,
   ChevronRight,
@@ -16,28 +8,226 @@ import {
   Pencil,
   Plus,
   Search,
+  Settings,
   Trash2,
 } from 'lucide-react'
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
+  type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
+  type RefObject,
 } from 'react'
+import { useLongPress } from '../hooks/useLongPress'
+import { useMediaNarrowMd } from '../hooks/useMediaNarrow'
 import { useOutflow } from '../hooks/useOutflow'
+import {
+  dragTypeChat,
+  dragTypeProject,
+  dropTypeProject,
+  dropTypeStandaloneRoot,
+  dropTypeTrash,
+  sidebarChatDndId,
+  sidebarProjectDndId,
+} from '../lib/dnd-ids'
 import {
   sortedChatsInProject,
   sortedProjectsList,
   sortedStandaloneChats,
 } from '../lib/storage'
+import {
+  plainTextFieldNames,
+  plainTextFieldProps,
+} from '../lib/plain-text-field-props'
 import type { Chat, Project } from '../types/outflow'
+import { SettingsModal } from './SettingsModal'
 
-const dragTypeChat = 'sidebar-chat'
-const dropTypeProject = 'sidebar-project'
-const dropTypeStandaloneRoot = 'sidebar-standalone-root'
+type TouchSheetState =
+  | { kind: 'chat'; chat: Chat }
+  | { kind: 'project'; project: Project }
 
-function DraggableSidebarChatRow({
+function SidebarRenameField({
+  inputRef,
+  value,
+  onChange,
+  onBlur,
+  onKeyDown,
+  className,
+  ariaLabel,
+  name,
+}: {
+  inputRef: RefObject<HTMLInputElement | null>
+  value: string
+  onChange: (next: string) => void
+  onBlur: () => void
+  onKeyDown: (e: ReactKeyboardEvent<HTMLInputElement>) => void
+  className: string
+  ariaLabel: string
+  name: string
+}) {
+  return (
+    <form
+      autoComplete="off"
+      className="contents"
+      onSubmit={(e) => e.preventDefault()}
+    >
+      <input
+        ref={inputRef}
+        {...plainTextFieldProps}
+        name={name}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onBlur={onBlur}
+        onKeyDown={onKeyDown}
+        className={`${className} select-text`}
+        aria-label={ariaLabel}
+      />
+    </form>
+  )
+}
+
+function SidebarChatSelectButton({
+  chat,
+  active,
+  narrow,
+  onSelect,
+  onTouchLongPress,
+}: {
+  chat: Chat
+  active: boolean
+  narrow: boolean
+  onSelect: () => void
+  onTouchLongPress: (c: Chat) => void
+}) {
+  const lp = useLongPress({
+    enabled: narrow,
+    onLongPress: () => onTouchLongPress(chat),
+  })
+  return (
+    <button
+      type="button"
+      onPointerDown={lp.onPointerDown}
+      onPointerUp={lp.onPointerUp}
+      onPointerCancel={lp.onPointerCancel}
+      onPointerLeave={lp.onPointerLeave}
+      onClick={() => {
+        if (lp.consumeClick()) return
+        onSelect()
+      }}
+      className={`min-w-0 flex-1 touch-manipulation select-none rounded-lg px-3 py-2 text-left text-sm transition ${
+        active
+          ? 'font-medium text-violet-900 dark:text-violet-100'
+          : 'text-zinc-700 dark:text-zinc-300'
+      }`}
+    >
+      <span className="line-clamp-2">{chat.title}</span>
+    </button>
+  )
+}
+
+function SidebarProjectTitleLongPress({
+  project,
+  narrow,
+  onTouchLongPress,
+}: {
+  project: Project
+  narrow: boolean
+  onTouchLongPress: (p: Project) => void
+}) {
+  const lp = useLongPress({
+    enabled: narrow,
+    onLongPress: () => onTouchLongPress(project),
+  })
+  return (
+    <div
+      className="min-w-0 flex-1 touch-manipulation select-none"
+      onPointerDown={lp.onPointerDown}
+      onPointerUp={lp.onPointerUp}
+      onPointerCancel={lp.onPointerCancel}
+      onPointerLeave={lp.onPointerLeave}
+    >
+      <span className="line-clamp-2 px-1 py-2 text-sm font-medium text-zinc-800 dark:text-zinc-100">
+        {project.title}
+      </span>
+    </div>
+  )
+}
+
+function SidebarSearchPanel({
+  globalSearchQuery,
+  setGlobalSearchQuery,
+  aggregateTags,
+  activeTagFilter,
+  openTagFilterView,
+  onNavigate,
+}: {
+  globalSearchQuery: string
+  setGlobalSearchQuery: (q: string) => void
+  aggregateTags: string[]
+  activeTagFilter: string | null
+  openTagFilterView: (tag: string) => void
+  onNavigate?: () => void
+}) {
+  return (
+    <div className="space-y-2 rounded-xl border border-zinc-200 bg-zinc-50/80 p-2 dark:border-zinc-700 dark:bg-zinc-800/40">
+      <form
+        autoComplete="off"
+        className="contents"
+        onSubmit={(e) => e.preventDefault()}
+      >
+        <input
+          type="text"
+          role="search"
+          {...plainTextFieldProps}
+          name={plainTextFieldNames.search}
+          value={globalSearchQuery}
+          onChange={(e) => setGlobalSearchQuery(e.target.value)}
+          placeholder="搜索所有气泡正文…"
+          className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-base text-zinc-900 outline-none ring-violet-500/0 transition focus:ring-2 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
+          aria-label="全局搜索"
+        />
+      </form>
+      <div>
+        <p className="mb-1.5 px-0.5 text-[10px] font-medium uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
+          标签云
+        </p>
+        {aggregateTags.length === 0 ? (
+          <p className="px-0.5 text-xs text-zinc-500 dark:text-zinc-400">
+            在正文中使用【标签】或 #标签 后，将出现在此处。
+          </p>
+        ) : (
+          <div className="flex max-h-32 flex-wrap gap-1.5 overflow-y-auto pr-0.5">
+            {aggregateTags.map((tag) => {
+              const active = activeTagFilter === tag
+              return (
+                <button
+                  key={tag}
+                  type="button"
+                  onClick={() => {
+                    openTagFilterView(tag)
+                    onNavigate?.()
+                  }}
+                  className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
+                    active
+                      ? 'bg-violet-600 text-white shadow-sm dark:bg-violet-500'
+                      : 'bg-white text-zinc-700 ring-1 ring-zinc-200 hover:bg-violet-50 hover:ring-violet-300 dark:bg-zinc-900 dark:text-zinc-200 dark:ring-zinc-600 dark:hover:bg-violet-950/40 dark:hover:ring-violet-500'
+                  }`}
+                >
+                  {tag}
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+const DraggableSidebarChatRow = function DraggableSidebarChatRow({
   chat,
   active,
   dragTitle,
@@ -48,24 +238,16 @@ function DraggableSidebarChatRow({
   dragTitle: string
   children: ReactNode
 }) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } =
-    useDraggable({
-      id: `sidebar-chat-${chat.id}`,
-      data: { type: dragTypeChat, chatId: chat.id },
-    })
-
-  const style = transform
-    ? {
-        transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
-      }
-    : undefined
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: sidebarChatDndId(chat.id),
+    data: { type: dragTypeChat, chatId: chat.id },
+  })
 
   return (
     <div
       ref={setNodeRef}
-      style={style}
-      className={`group flex items-stretch gap-0.5 rounded-lg transition ${
-        isDragging ? 'z-20 opacity-60' : ''
+      className={`group flex select-none items-stretch gap-0.5 rounded-lg transition ${
+        isDragging ? 'z-20 opacity-40' : ''
       } ${
         active
           ? 'bg-violet-100 dark:bg-violet-950/60'
@@ -74,9 +256,45 @@ function DraggableSidebarChatRow({
     >
       <button
         type="button"
-        className="flex shrink-0 cursor-grab touch-none items-center rounded-l-lg px-1 text-zinc-400 hover:text-zinc-600 active:cursor-grabbing dark:hover:text-zinc-300"
+        className="flex shrink-0 cursor-grab touch-none select-none items-center rounded-l-lg px-1 text-zinc-400 hover:text-zinc-600 active:cursor-grabbing dark:hover:text-zinc-300"
         title={dragTitle}
         aria-label="拖拽移动对话"
+        {...listeners}
+        {...attributes}
+      >
+        <GripVertical className="h-4 w-4" />
+      </button>
+      <div className="min-w-0 flex-1">{children}</div>
+    </div>
+  )
+}
+
+function DraggableProjectRow({
+  project,
+  dragTitle,
+  children,
+}: {
+  project: Project
+  dragTitle: string
+  children: ReactNode
+}) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: sidebarProjectDndId(project.id),
+    data: { type: dragTypeProject, projectId: project.id },
+  })
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`flex select-none items-stretch gap-0.5 ${
+        isDragging ? 'opacity-40' : ''
+      }`}
+    >
+      <button
+        type="button"
+        className="flex shrink-0 cursor-grab touch-none select-none items-center rounded-lg px-1 text-zinc-400 hover:text-zinc-600 active:cursor-grabbing dark:hover:text-zinc-300"
+        title={dragTitle}
+        aria-label="拖拽移动项目"
         {...listeners}
         {...attributes}
       >
@@ -125,7 +343,51 @@ function StandaloneRootDropZone({ children }: { children: ReactNode }) {
   )
 }
 
-export function Sidebar() {
+function TrashDropZone({
+  active,
+  onOpen,
+}: {
+  active: boolean
+  onOpen: () => void
+}) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: 'sidebar-trash',
+    data: { type: dropTypeTrash },
+  })
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`shrink-0 border-t border-zinc-200 p-2 dark:border-zinc-800 ${
+        isOver
+          ? 'bg-red-50 ring-2 ring-inset ring-red-400/60 dark:bg-red-950/30 dark:ring-red-500/50'
+          : ''
+      }`}
+    >
+      <button
+        type="button"
+        onClick={onOpen}
+        className={`flex w-full select-none items-center justify-center gap-2 rounded-xl border-2 border-dashed py-3 text-xs font-semibold transition ${
+          active
+            ? 'border-violet-500 bg-violet-50 text-violet-900 dark:border-violet-400 dark:bg-violet-950/40 dark:text-violet-100'
+            : 'border-zinc-300 text-zinc-600 hover:border-red-400 hover:bg-red-50/80 hover:text-red-800 dark:border-zinc-600 dark:text-zinc-300 dark:hover:border-red-500 dark:hover:bg-red-950/20 dark:hover:text-red-200'
+        }`}
+      >
+        <Trash2 className="h-4 w-4 shrink-0" />
+        回收站
+      </button>
+    </div>
+  )
+}
+
+export type SidebarProps = {
+  /** 移动端抽屉是否展开（桌面端由 CSS 忽略位移） */
+  isOpen?: boolean
+  /** 在移动端完成导航后收起抽屉（选择对话、回收站、标签视图等） */
+  onNavigate?: () => void
+}
+
+export function Sidebar({ isOpen = false, onNavigate }: SidebarProps) {
   const {
     projects,
     chats,
@@ -137,10 +399,17 @@ export function Sidebar() {
     deleteProject,
     renameChat,
     deleteChat,
-    moveChatToProject,
+    openTrashWorkspace,
+    trashWorkspace,
+    globalSearchQuery,
+    setGlobalSearchQuery,
+    activeTagFilter,
+    openTagFilterView,
+    aggregateTags,
   } = useOutflow()
 
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
+  const [searchPanelOpen, setSearchPanelOpen] = useState(false)
   const isExpanded = (id: string) => expanded[id] !== false
 
   const [renamingChatId, setRenamingChatId] = useState<string | null>(null)
@@ -152,6 +421,18 @@ export function Sidebar() {
     null,
   )
   const [deleteChatTarget, setDeleteChatTarget] = useState<Chat | null>(null)
+  const [touchSheet, setTouchSheet] = useState<TouchSheetState | null>(null)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const narrow = useMediaNarrowMd()
+
+  useEffect(() => {
+    if (!touchSheet) return
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key === 'Escape') setTouchSheet(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [touchSheet])
 
   useEffect(() => {
     if (!renamingChatId && !renamingFolderId) return
@@ -196,28 +477,6 @@ export function Sidebar() {
     setDeleteChatTarget(null)
   }, [deleteChatTarget, deleteChat])
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-  )
-
-  const handleDragEnd = useCallback(
-    (event: DragEndEvent) => {
-      const { active, over } = event
-      if (!over) return
-      const drag = active.data.current
-      const drop = over.data.current
-      if (drag?.type !== dragTypeChat || typeof drag.chatId !== 'string') return
-      if (drop?.type === dropTypeProject && typeof drop.projectId === 'string') {
-        moveChatToProject(drag.chatId, drop.projectId)
-        return
-      }
-      if (drop?.type === dropTypeStandaloneRoot) {
-        moveChatToProject(drag.chatId, null)
-      }
-    },
-    [moveChatToProject],
-  )
-
   const renderChatButton = (
     chat: Chat,
     opts: { inDraggable?: boolean } = {},
@@ -225,10 +484,11 @@ export function Sidebar() {
     const active = chat.id === activeChatId
     const renaming = renamingChatId === chat.id
     const inner = renaming ? (
-      <input
-        ref={renameInputRef}
+      <SidebarRenameField
+        inputRef={renameInputRef}
+        name={plainTextFieldNames.renameChat}
         value={renameDraft}
-        onChange={(e) => setRenameDraft(e.target.value)}
+        onChange={setRenameDraft}
         onBlur={commitRename}
         onKeyDown={(e) => {
           if (e.key === 'Enter') {
@@ -240,8 +500,8 @@ export function Sidebar() {
             setRenamingChatId(null)
           }
         }}
-        className="w-full rounded-lg bg-white px-3 py-2 text-sm text-zinc-900 outline-none ring-2 ring-violet-500 dark:bg-zinc-900 dark:text-zinc-100"
-        aria-label="对话标题"
+        className="w-full rounded-lg bg-white px-3 py-2 text-base text-zinc-900 outline-none ring-2 ring-violet-500 dark:bg-zinc-900 dark:text-zinc-100"
+        ariaLabel="对话标题"
       />
     ) : (
       <div
@@ -249,25 +509,24 @@ export function Sidebar() {
           opts.inDraggable ? '' : active ? 'bg-violet-100 dark:bg-violet-950/60' : 'hover:bg-zinc-100 dark:hover:bg-zinc-800'
         }`}
       >
-        <button
-          type="button"
-          onClick={() => selectChat(chat.id)}
-          className={`min-w-0 flex-1 rounded-lg px-3 py-2 text-left text-sm transition ${
-            active
-              ? 'font-medium text-violet-900 dark:text-violet-100'
-              : 'text-zinc-700 dark:text-zinc-300'
-          }`}
-        >
-          <span className="line-clamp-2">{chat.title}</span>
-        </button>
-        <div className="flex shrink-0 items-center gap-0.5 pr-1 opacity-0 transition group-hover:opacity-100 focus-within:opacity-100">
+        <SidebarChatSelectButton
+          chat={chat}
+          active={active}
+          narrow={narrow}
+          onTouchLongPress={(c) => setTouchSheet({ kind: 'chat', chat: c })}
+          onSelect={() => {
+            selectChat(chat.id)
+            onNavigate?.()
+          }}
+        />
+        <div className="hidden shrink-0 items-center gap-0.5 pr-1 opacity-0 transition group-hover:opacity-100 focus-within:opacity-100 md:flex">
           <button
             type="button"
             onClick={(e) => {
               e.stopPropagation()
               startRenameChat(chat)
             }}
-            className="rounded-md p-1.5 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-800 dark:hover:bg-zinc-700 dark:hover:text-zinc-100"
+            className="select-none rounded-md p-1.5 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-800 dark:hover:bg-zinc-700 dark:hover:text-zinc-100"
             title="重命名"
             aria-label="重命名对话"
           >
@@ -279,9 +538,9 @@ export function Sidebar() {
               e.stopPropagation()
               setDeleteChatTarget(chat)
             }}
-            className="rounded-md p-1.5 text-zinc-500 hover:bg-red-100 hover:text-red-700 dark:hover:bg-red-950/50 dark:hover:text-red-400"
-            title="删除"
-            aria-label="删除对话"
+            className="select-none rounded-md p-1.5 text-zinc-500 hover:bg-red-100 hover:text-red-700 dark:hover:bg-red-950/50 dark:hover:text-red-400"
+            title="移入回收站"
+            aria-label="移入回收站"
           >
             <Trash2 className="h-3.5 w-3.5" />
           </button>
@@ -300,56 +559,87 @@ export function Sidebar() {
     return <div className="group relative">{inner}</div>
   }
 
-  const projectList = sortedProjectsList(projects)
-  const standaloneList = sortedStandaloneChats(chats)
+  const projectList = useMemo(() => sortedProjectsList(projects), [projects])
+  const standaloneList = useMemo(() => sortedStandaloneChats(chats), [chats])
+
+  const handleNewChat = useCallback(() => {
+    newChat()
+    onNavigate?.()
+  }, [newChat, onNavigate])
+
+  const handleOpenTrash = useCallback(() => {
+    openTrashWorkspace()
+    onNavigate?.()
+  }, [openTrashWorkspace, onNavigate])
 
   return (
-    <aside className="flex w-60 shrink-0 flex-col border-r border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-      <div className="flex h-14 items-center border-b border-zinc-200 px-3 dark:border-zinc-800">
-        <span className="flex items-center gap-2 text-sm font-semibold text-zinc-800 dark:text-zinc-100">
-          <FolderOpen className="h-4 w-4 text-violet-600 dark:text-violet-400" />
+    <>
+    <div
+      className={`fixed inset-y-0 left-0 z-50 min-h-0 w-64 shrink-0 select-none transform transition-transform duration-300 ease-in-out md:relative md:inset-auto md:z-auto md:translate-x-0 ${
+        isOpen ? 'translate-x-0' : '-translate-x-full'
+      }`}
+    >
+    <aside className="flex h-full min-h-0 w-full select-none flex-col border-r border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+      <div className="flex h-14 items-center justify-between gap-2 border-b border-zinc-200 px-3 dark:border-zinc-800">
+        <span className="flex min-w-0 items-center gap-2 text-sm font-semibold text-zinc-800 dark:text-zinc-100">
+          <FolderOpen className="h-4 w-4 shrink-0 text-violet-600 dark:text-violet-400" />
           OutFlow
         </span>
-      </div>
-
-      <div className="shrink-0 space-y-2 border-b border-zinc-200 p-2 dark:border-zinc-800">
-        <div className="flex items-center gap-1.5">
+        <div className="flex shrink-0 items-center gap-0.5">
           <button
             type="button"
-            onClick={newChat}
-            className="flex flex-1 items-center justify-center gap-1 rounded-xl border border-zinc-200 bg-zinc-50 py-2 text-xs font-medium text-zinc-700 transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-800 dark:border-zinc-700 dark:bg-zinc-800/50 dark:text-zinc-200 dark:hover:border-violet-500 dark:hover:bg-violet-950/40 dark:hover:text-violet-200"
+            onClick={handleNewChat}
+            className="flex h-9 w-9 select-none items-center justify-center rounded-lg text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+            title="新对话"
+            aria-label="新对话"
           >
-            <MessageSquare className="h-3.5 w-3.5 shrink-0" />
-            新对话
+            <MessageSquare className="h-4 w-4" />
           </button>
           <button
             type="button"
-            disabled
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-dashed border-zinc-200 text-zinc-400 dark:border-zinc-700 dark:text-zinc-500"
-            title="搜索（即将推出）"
-            aria-label="搜索"
+            onClick={() => setSearchPanelOpen((o) => !o)}
+            className={`flex h-9 w-9 select-none items-center justify-center rounded-lg transition ${
+              searchPanelOpen
+                ? 'bg-violet-100 text-violet-800 dark:bg-violet-950/50 dark:text-violet-200'
+                : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100'
+            }`}
+            title={searchPanelOpen ? '收起搜索与标签' : '搜索与标签'}
+            aria-label="搜索与标签"
+            aria-expanded={searchPanelOpen}
           >
             <Search className="h-4 w-4" />
           </button>
         </div>
+      </div>
+
+      <div className="shrink-0 space-y-2 border-b border-zinc-200 p-2 dark:border-zinc-800">
+        {searchPanelOpen ? (
+          <SidebarSearchPanel
+            globalSearchQuery={globalSearchQuery}
+            setGlobalSearchQuery={setGlobalSearchQuery}
+            aggregateTags={aggregateTags}
+            activeTagFilter={activeTagFilter}
+            openTagFilterView={openTagFilterView}
+            onNavigate={onNavigate}
+          />
+        ) : null}
         <button
           type="button"
           onClick={newProject}
-          className="flex w-full items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-zinc-300 bg-transparent py-2.5 text-xs font-medium text-zinc-600 transition hover:border-violet-400 hover:bg-violet-50/60 hover:text-violet-800 dark:border-zinc-600 dark:text-zinc-300 dark:hover:border-violet-500 dark:hover:bg-violet-950/30 dark:hover:text-violet-200"
+          className="flex w-full select-none items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-zinc-300 bg-transparent py-2.5 text-xs font-medium text-zinc-600 transition hover:border-violet-400 hover:bg-violet-50/60 hover:text-violet-800 dark:border-zinc-600 dark:text-zinc-300 dark:hover:border-violet-500 dark:hover:bg-violet-950/30 dark:hover:text-violet-200"
         >
           <Plus className="h-3.5 w-3.5 shrink-0" />
-          新建文件夹
+          新建项目
         </button>
       </div>
 
-      <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-        <nav className="flex-1 overflow-y-auto px-2 pb-4">
+      <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
           <p className="px-2 pb-1 pt-3 text-[11px] font-medium uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
             项目
           </p>
           {projectList.length === 0 ? (
             <p className="px-2 py-2 text-xs text-zinc-500 dark:text-zinc-400">
-              暂无文件夹。点击「新建文件夹」创建，或将下方独立对话拖入此处（需先创建文件夹）。
+              暂无项目。点击「新建项目」创建，或将下方独立对话拖入此处（需先创建项目）。
             </p>
           ) : (
             <ul className="space-y-1">
@@ -364,72 +654,82 @@ export function Sidebar() {
                           expandedProj ? 'bg-zinc-50 dark:bg-zinc-800/40' : ''
                         }`}
                       >
-                        <div className="flex items-stretch gap-0.5">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setExpanded((e) => {
-                                const open = e[proj.id] !== false
-                                return { ...e, [proj.id]: open ? false : true }
-                              })
-                            }
-                            className="flex shrink-0 items-center rounded-lg p-2 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                            aria-expanded={expandedProj}
-                            title={expandedProj ? '收起' : '展开'}
-                          >
-                            {expandedProj ? (
-                              <ChevronDown className="h-4 w-4" />
+                        <DraggableProjectRow
+                          project={proj}
+                          dragTitle="拖入底部回收站删除，或拖入独立区移出项目"
+                        >
+                          <div className="flex min-w-0 flex-1 items-stretch gap-0.5">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setExpanded((e) => {
+                                  const open = e[proj.id] !== false
+                                  return { ...e, [proj.id]: open ? false : true }
+                                })
+                              }
+                              className="flex shrink-0 select-none items-center rounded-lg p-2 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                              aria-expanded={expandedProj}
+                              title={expandedProj ? '收起' : '展开'}
+                            >
+                              {expandedProj ? (
+                                <ChevronDown className="h-4 w-4" />
+                              ) : (
+                                <ChevronRight className="h-4 w-4" />
+                              )}
+                            </button>
+                            {renamingFolderId === proj.id ? (
+                              <SidebarRenameField
+                                inputRef={renameInputRef}
+                                name={plainTextFieldNames.renameProject}
+                                value={renameDraft}
+                                onChange={setRenameDraft}
+                                onBlur={commitRename}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault()
+                                    commitRename()
+                                  }
+                                  if (e.key === 'Escape') {
+                                    e.preventDefault()
+                                    setRenamingFolderId(null)
+                                  }
+                                }}
+                                className="min-w-0 flex-1 rounded-lg bg-white px-2 py-2 text-base text-zinc-900 outline-none ring-2 ring-violet-500 dark:bg-zinc-900 dark:text-zinc-100"
+                                ariaLabel="项目名称"
+                              />
                             ) : (
-                              <ChevronRight className="h-4 w-4" />
-                            )}
-                          </button>
-                          {renamingFolderId === proj.id ? (
-                            <input
-                              ref={renameInputRef}
-                              value={renameDraft}
-                              onChange={(e) => setRenameDraft(e.target.value)}
-                              onBlur={commitRename}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                  e.preventDefault()
-                                  commitRename()
-                                }
-                                if (e.key === 'Escape') {
-                                  e.preventDefault()
-                                  setRenamingFolderId(null)
-                                }
-                              }}
-                              className="min-w-0 flex-1 rounded-lg bg-white px-2 py-2 text-sm text-zinc-900 outline-none ring-2 ring-violet-500 dark:bg-zinc-900 dark:text-zinc-100"
-                              aria-label="文件夹名称"
-                            />
-                          ) : (
-                            <div className="group flex min-w-0 flex-1 items-center gap-0.5">
-                              <span className="line-clamp-2 flex-1 px-1 py-2 text-sm font-medium text-zinc-800 dark:text-zinc-100">
-                                {proj.title}
-                              </span>
-                              <div className="flex shrink-0 items-center gap-0.5 pr-1 opacity-0 transition group-hover:opacity-100 focus-within:opacity-100">
-                                <button
-                                  type="button"
-                                  onClick={() => startRenameFolder(proj)}
-                                  className="rounded-md p-1.5 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-800 dark:hover:bg-zinc-700 dark:hover:text-zinc-100"
-                                  title="重命名文件夹"
-                                  aria-label="重命名文件夹"
-                                >
-                                  <Pencil className="h-3.5 w-3.5" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setDeleteFolderTarget(proj)}
-                                  className="rounded-md p-1.5 text-zinc-500 hover:bg-red-100 hover:text-red-700 dark:hover:bg-red-950/50 dark:hover:text-red-400"
-                                  title="删除文件夹"
-                                  aria-label="删除文件夹"
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </button>
+                              <div className="group flex min-w-0 flex-1 items-center gap-0.5">
+                                <SidebarProjectTitleLongPress
+                                  project={proj}
+                                  narrow={narrow}
+                                  onTouchLongPress={(p) =>
+                                    setTouchSheet({ kind: 'project', project: p })
+                                  }
+                                />
+                                <div className="hidden shrink-0 items-center gap-0.5 pr-1 opacity-0 transition group-hover:opacity-100 focus-within:opacity-100 md:flex">
+                                  <button
+                                    type="button"
+                                    onClick={() => startRenameFolder(proj)}
+                                    className="select-none rounded-md p-1.5 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-800 dark:hover:bg-zinc-700 dark:hover:text-zinc-100"
+                                    title="重命名项目"
+                                    aria-label="重命名项目"
+                                  >
+                                    <Pencil className="h-3.5 w-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setDeleteFolderTarget(proj)}
+                                    className="select-none rounded-md p-1.5 text-zinc-500 hover:bg-red-100 hover:text-red-700 dark:hover:bg-red-950/50 dark:hover:text-red-400"
+                                    title="移入回收站"
+                                    aria-label="移入回收站"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
                               </div>
-                            </div>
-                          )}
-                        </div>
+                            )}
+                          </div>
+                        </DraggableProjectRow>
                         {expandedProj && nested.length > 0 ? (
                           <ul className="space-y-0.5 border-t border-zinc-100 py-1 pl-2 dark:border-zinc-700/80">
                             {nested.map((c) => (
@@ -446,7 +746,7 @@ export function Sidebar() {
                           </ul>
                         ) : expandedProj ? (
                           <p className="border-t border-zinc-100 px-3 py-2 text-xs text-zinc-500 dark:border-zinc-700/80 dark:text-zinc-400">
-                            空文件夹，可将独立对话拖入此处
+                            空项目，可将独立对话拖入此处
                           </p>
                         ) : null}
                       </div>
@@ -475,14 +775,101 @@ export function Sidebar() {
               ))}
             </ul>
           </StandaloneRootDropZone>
-        </nav>
-      </DndContext>
+      </nav>
+
+      <div className="shrink-0 border-t border-zinc-200 p-2 dark:border-zinc-800">
+        <button
+          type="button"
+          onClick={() => {
+            setSettingsOpen(true)
+            onNavigate?.()
+          }}
+          className="flex w-full select-none items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50/80 py-2.5 text-xs font-medium text-zinc-700 transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-800 dark:border-zinc-700 dark:bg-zinc-800/40 dark:text-zinc-200 dark:hover:border-violet-500 dark:hover:bg-violet-950/40 dark:hover:text-violet-200"
+          title="设置"
+          aria-label="打开设置"
+        >
+          <Settings className="h-4 w-4 shrink-0" />
+          设置
+        </button>
+      </div>
+
+      <TrashDropZone active={trashWorkspace} onOpen={handleOpenTrash} />
+
+    </aside>
+    </div>
+
+      {touchSheet ? (
+        <div
+          className="fixed inset-0 z-[70] flex select-none flex-col justify-end md:hidden"
+          role="presentation"
+        >
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/40"
+            aria-label="关闭菜单"
+            onClick={() => setTouchSheet(null)}
+          />
+          <div className="relative z-10 rounded-t-2xl border-t border-zinc-200 bg-white p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-[0_-8px_30px_rgba(0,0,0,0.12)] dark:border-zinc-700 dark:bg-zinc-900 dark:shadow-[0_-8px_30px_rgba(0,0,0,0.4)]">
+            <p className="mb-4 truncate text-center text-sm font-semibold text-zinc-800 dark:text-zinc-100">
+              {touchSheet.kind === 'chat'
+                ? touchSheet.chat.title
+                : touchSheet.project.title}
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (touchSheet.kind === 'chat') {
+                    startRenameChat(touchSheet.chat)
+                  } else {
+                    startRenameFolder(touchSheet.project)
+                  }
+                  setTouchSheet(null)
+                }}
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-zinc-200 py-3 text-sm font-medium text-zinc-800 transition hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-100 dark:hover:bg-zinc-800"
+              >
+                <Pencil className="h-4 w-4 shrink-0" />
+                重命名
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (touchSheet.kind === 'chat') {
+                    setDeleteChatTarget(touchSheet.chat)
+                  } else {
+                    setDeleteFolderTarget(touchSheet.project)
+                  }
+                  setTouchSheet(null)
+                }}
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 py-3 text-sm font-medium text-red-800 transition hover:bg-red-100 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200 dark:hover:bg-red-950/60"
+              >
+                <Trash2 className="h-4 w-4 shrink-0" />
+                移入回收站
+              </button>
+              <button
+                type="button"
+                onClick={() => setTouchSheet(null)}
+                className="rounded-xl py-3 text-sm font-medium text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
+              >
+                取消
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {settingsOpen ? (
+        <SettingsModal onClose={() => setSettingsOpen(false)} />
+      ) : null}
 
       {deleteFolderTarget && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          className="fixed inset-0 z-[60] flex select-none items-center justify-center bg-black/40 p-4"
           role="presentation"
           onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setDeleteFolderTarget(null)
+          }}
+          onPointerDown={(e) => {
             if (e.target === e.currentTarget) setDeleteFolderTarget(null)
           }}
         >
@@ -497,10 +884,10 @@ export function Sidebar() {
               id="delete-folder-title"
               className="text-base font-semibold text-zinc-900 dark:text-zinc-100"
             >
-              删除文件夹？
+              将项目移入回收站？
             </h2>
             <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-              「{deleteFolderTarget.title}」将被删除，其中的对话会移回「独立对话」区，内容保留。
+              「{deleteFolderTarget.title}」将移入回收站；其中的对话在侧栏中隐藏，可在回收站恢复或彻底删除。
             </p>
             <div className="mt-5 flex justify-end gap-2">
               <button
@@ -515,7 +902,7 @@ export function Sidebar() {
                 onClick={confirmDeleteFolder}
                 className="rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
               >
-                删除
+                移入回收站
               </button>
             </div>
           </div>
@@ -524,9 +911,12 @@ export function Sidebar() {
 
       {deleteChatTarget && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          className="fixed inset-0 z-[60] flex select-none items-center justify-center bg-black/40 p-4"
           role="presentation"
           onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setDeleteChatTarget(null)
+          }}
+          onPointerDown={(e) => {
             if (e.target === e.currentTarget) setDeleteChatTarget(null)
           }}
         >
@@ -541,10 +931,10 @@ export function Sidebar() {
               id="delete-chat-title"
               className="text-base font-semibold text-zinc-900 dark:text-zinc-100"
             >
-              删除对话？
+              将对话移入回收站？
             </h2>
             <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-              将永久删除「{deleteChatTarget.title}」及其全部内容块，且无法恢复。
+              「{deleteChatTarget.title}」及其内容块将移入回收站，可在回收站恢复或彻底删除。
             </p>
             <div className="mt-5 flex justify-end gap-2">
               <button
@@ -559,12 +949,12 @@ export function Sidebar() {
                 onClick={confirmDeleteChat}
                 className="rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
               >
-                删除
+                移入回收站
               </button>
             </div>
           </div>
         </div>
       )}
-    </aside>
+    </>
   )
 }

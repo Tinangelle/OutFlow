@@ -1,5 +1,6 @@
 import type { Block, Chat, Project } from '../types/outflow'
-import { newId } from './ids'
+import { generateId } from './ids'
+import { extractTagsFromContent } from './tags'
 
 export function createBlock(
   chatId: string,
@@ -8,12 +9,13 @@ export function createBlock(
 ): Block {
   const t = Date.now()
   return {
-    id: newId(),
+    id: generateId(),
     chatId,
     content,
     orderIndex,
     createdAt: t,
     updatedAt: t,
+    tags: extractTagsFromContent(content),
   }
 }
 
@@ -21,7 +23,7 @@ export function createBlock(
 export function createProject(title?: string): Project {
   const t = Date.now()
   return {
-    id: newId(),
+    id: generateId(),
     title: title?.trim() || '未命名文件夹',
     createdAt: t,
     updatedAt: t,
@@ -31,7 +33,7 @@ export function createProject(title?: string): Project {
 export function createChat(projectId: string | null, title?: string): Chat {
   const t = Date.now()
   return {
-    id: newId(),
+    id: generateId(),
     projectId,
     title: title?.trim() || '新对话',
     createdAt: t,
