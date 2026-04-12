@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OutFlow · 口嗨</title>
+    <script>
+      (function () {
+        try {
+          var raw = localStorage.getItem('outflow.v1')
+          var dark = false
+          if (raw) {
+            var d = JSON.parse(raw)
+            dark = d.theme === 'dark'
+          } else {
+            dark = window.matchMedia('(prefers-color-scheme: dark)').matches
+          }
+          if (dark) document.documentElement.classList.add('dark')
+        } catch (_) {}
+      })()
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
