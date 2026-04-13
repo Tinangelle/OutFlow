@@ -15,6 +15,7 @@ import { useCallback, useState, type ReactNode } from 'react'
 import { useOutflow } from '../hooks/useOutflow'
 import {
   dragTypeBlock,
+  dragTypeBoardChat,
   dragTypeChat,
   dragTypeProject,
   dropTypeProject,
@@ -37,6 +38,20 @@ function OverlayCard({ children }: { children: ReactNode }) {
   )
 }
 
+function OverlayTitle({
+  title,
+  isOverlay,
+}: {
+  title: string
+  isOverlay: boolean
+}) {
+  return (
+    <span className={isOverlay ? 'line-clamp-2' : ''}>
+      {title}
+    </span>
+  )
+}
+
 function DragOverlayContent({ state }: { state: OverlayState }) {
   const { chats, projects, activeChatBlocks } = useOutflow()
   if (!state) return null
@@ -46,7 +61,7 @@ function DragOverlayContent({ state }: { state: OverlayState }) {
       <OverlayCard>
         <div className="flex items-center gap-2 text-sm font-medium text-zinc-800 dark:text-zinc-100">
           <MessageSquare className="h-4 w-4 shrink-0 text-violet-600 dark:text-violet-400" />
-          <span className="line-clamp-2">{c?.title ?? '对话'}</span>
+          <OverlayTitle title={c?.title ?? '对话'} isOverlay />
         </div>
       </OverlayCard>
     )
@@ -57,7 +72,7 @@ function DragOverlayContent({ state }: { state: OverlayState }) {
       <OverlayCard>
         <div className="flex items-center gap-2 text-sm font-medium text-zinc-800 dark:text-zinc-100">
           <FolderOpen className="h-4 w-4 shrink-0 text-violet-600 dark:text-violet-400" />
-          <span className="line-clamp-2">{p?.title ?? '项目'}</span>
+          <OverlayTitle title={p?.title ?? '项目'} isOverlay />
         </div>
       </OverlayCard>
     )
@@ -85,13 +100,20 @@ export function GlobalDndLayout({ children }: { children: ReactNode }) {
     deleteProject,
     softDeleteBlock,
     reorderBlocks,
+    reorderProjects,
+    reorderChatsInProject,
     activeChatBlocks,
+    projects,
+    chats,
+    activeProjectId,
   } = useOutflow()
 
   const [overlay, setOverlay] = useState<OverlayState>(null)
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(PointerSensor, {
+      activationConstraint: { delay: 250, tolerance: 5 },
+    }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     }),
@@ -103,7 +125,10 @@ export function GlobalDndLayout({ children }: { children: ReactNode }) {
       setOverlay(null)
       return
     }
-    if (d.type === dragTypeChat && typeof d.chatId === 'string') {
+    if (
+      (d.type === dragTypeChat || d.type === dragTypeBoardChat) &&
+      typeof d.chatId === 'string'
+    ) {
       setOverlay({ kind: 'chat', chatId: d.chatId })
       return
     }
@@ -162,6 +187,29 @@ export function GlobalDndLayout({ children }: { children: ReactNode }) {
         return
       }
 
+      if (drag?.type === dragTypeBoardChat && typeof drag.chatId === 'string') {
+        if (!activeProjectId) return
+        const activeId = drag.chatId
+        const overId = String(over.id)
+        if (activeId === overId) return
+        // 优先使用拖拽源提供的当前排序快照
+        const projectChats = (event.active.data.current?.projectChatIds ??
+          null) as string[] | null
+        const baseIds =
+          projectChats && projectChats.length > 0
+            ? projectChats
+            : chats
+                .filter((c) => c.projectId === activeProjectId)
+                .sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0))
+                .map((c) => c.id)
+        if (!baseIds.includes(activeId) || !baseIds.includes(overId)) return
+        const oldIndex = baseIds.indexOf(activeId)
+        const newIndex = baseIds.indexOf(overId)
+        if (oldIndex < 0 || newIndex < 0) return
+        reorderChatsInProject(activeProjectId, arrayMove(baseIds, oldIndex, newIndex))
+        return
+      }
+
       if (drag?.type === dragTypeBlock && typeof drag.blockId === 'string') {
         const activeId = drag.blockId
         const overId = String(over.id)
@@ -172,6 +220,22 @@ export function GlobalDndLayout({ children }: { children: ReactNode }) {
         const newIndex = ids.indexOf(overId)
         if (oldIndex < 0 || newIndex < 0) return
         reorderBlocks(arrayMove(ids, oldIndex, newIndex))
+        return
+      }
+
+      if (drag?.type === dragTypeProject && typeof drag.projectId === 'string') {
+        const activeId = drag.projectId
+        const overProjectId =
+          drop?.type === dragTypeProject && typeof drop.projectId === 'string'
+            ? drop.projectId
+            : null
+        if (!overProjectId || activeId === overProjectId) return
+        const ids = projects.map((p) => p.id)
+        if (!ids.includes(activeId) || !ids.includes(overProjectId)) return
+        const oldIndex = ids.indexOf(activeId)
+        const newIndex = ids.indexOf(overProjectId)
+        if (oldIndex < 0 || newIndex < 0) return
+        reorderProjects(arrayMove(ids, oldIndex, newIndex))
       }
     },
     [
@@ -180,8 +244,13 @@ export function GlobalDndLayout({ children }: { children: ReactNode }) {
       deleteChat,
       deleteProject,
       moveChatToProject,
+      reorderChatsInProject,
       reorderBlocks,
+      reorderProjects,
       softDeleteBlock,
+      projects,
+      chats,
+      activeProjectId,
     ],
   )
 

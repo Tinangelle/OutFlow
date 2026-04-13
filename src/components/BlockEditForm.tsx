@@ -13,10 +13,12 @@ export function BlockEditForm({
   block,
   onSave,
   variant = 'bubble',
+  onFocus,
 }: {
   block: Block
   onSave: (id: string, content: string) => void
   variant?: 'bubble' | 'document'
+  onFocus?: () => void
 }) {
   const [draft, setDraft] = useState(() => block.content)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -56,6 +58,7 @@ export function BlockEditForm({
         name={fieldName}
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
+        onFocus={() => onFocus?.()}
         onKeyDown={(e) => {
           if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
             e.preventDefault()

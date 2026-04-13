@@ -2,6 +2,10 @@
 export interface Block {
   id: string
   chatId: string
+  /** 预留：后续用于卡片标题展示 */
+  title?: string
+  /** 卡片提要/大纲 */
+  summary?: string
   /** Markdown 源文本 */
   content: string
   /** 对话内排序，升序 */
@@ -18,6 +22,8 @@ export interface Block {
 export interface Project {
   id: string
   title: string
+  /** 侧栏内排序，升序 */
+  orderIndex: number
   createdAt: number
   updatedAt: number
   /** 有值表示已软删除（回收站） */
@@ -29,6 +35,10 @@ export interface Chat {
   id: string
   projectId: string | null
   title: string
+  /** 对话提要/大纲 */
+  summary?: string
+  /** Project 内排序（可选，用于拖拽） */
+  orderIndex?: number
   createdAt: number
   updatedAt: number
   /** 有值表示已软删除（回收站） */

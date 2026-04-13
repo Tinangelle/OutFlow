@@ -2,10 +2,13 @@ import {
   Copy,
   FileText,
   LayoutGrid,
+  Maximize2,
   Menu,
   MessageSquare,
   Paperclip,
   SendHorizontal,
+  Type,
+  X,
 } from 'lucide-react'
 import {
   Fragment,
@@ -19,6 +22,8 @@ import {
   type KeyboardEvent,
 } from 'react'
 import { useOutflow } from '../hooks/useOutflow'
+import { sortedChatsInProject } from '../lib/storage'
+import { calculateWordCount } from '../lib/utils'
 import {
   plainTextFieldNames,
   plainTextFieldProps,
@@ -40,8 +45,14 @@ export function ChatView({
   const {
     activeChat,
     activeChatBlocks,
+    activeProjectId,
+    projects,
+    chats,
+    discoverableBlocks,
     addBlock,
     updateBlock,
+    updateBlockSummary,
+    updateChatSummary,
     trashWorkspace,
     softDeleteBlock,
     globalSearchQuery,
@@ -53,34 +64,100 @@ export function ChatView({
   const [editingId, setEditingId] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [copiedBlockId, setCopiedBlockId] = useState<string | null>(null)
+  const [focusedDocumentBlockId, setFocusedDocumentBlockId] = useState<string | null>(
+    null,
+  )
+  const [typewriterMode, setTypewriterMode] = useState(false)
+  const [pendingNewBlockFocus, setPendingNewBlockFocus] = useState(false)
   const [attachmentLoading, setAttachmentLoading] = useState(false)
+  const [composerExpanded, setComposerExpanded] = useState(false)
   const taRef = useRef<HTMLTextAreaElement>(null)
+  const fullscreenTaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const endRef = useRef<HTMLDivElement>(null)
   const prevLen = useRef(0)
-  const sortedBlocks = activeChatBlocks
+  const prevDocumentLen = useRef(0)
+  const centerScrollTimerRef = useRef<number | null>(null)
+  const selectedProject = useMemo(
+    () => projects.find((p) => p.id === activeProjectId) ?? null,
+    [projects, activeProjectId],
+  )
+  const projectChats = useMemo(() => {
+    if (!selectedProject) return []
+    return sortedChatsInProject(chats, selectedProject.id).sort((a, b) => {
+      const ao = a.orderIndex
+      const bo = b.orderIndex
+      if (typeof ao === 'number' && typeof bo === 'number') return ao - bo
+      if (typeof ao === 'number') return -1
+      if (typeof bo === 'number') return 1
+      return a.createdAt - b.createdAt
+    })
+  }, [chats, selectedProject])
+  const projectBlocks = useMemo(() => {
+    if (!selectedProject) return new Map<string, typeof activeChatBlocks>()
+    const byChat = new Map<string, typeof activeChatBlocks>()
+    for (const c of projectChats) {
+      const rows = discoverableBlocks
+        .filter((b) => b.chatId === c.id)
+        .sort((a, b) => a.orderIndex - b.orderIndex)
+      byChat.set(c.id, rows)
+    }
+    return byChat
+  }, [discoverableBlocks, projectChats, selectedProject, activeChatBlocks])
+  const sortedBlocks = selectedProject
+    ? projectChats.flatMap((c) => projectBlocks.get(c.id) ?? [])
+    : activeChatBlocks
+  const projectDocumentMode = selectedProject !== null && activeChat === null
 
   const discoveryActive =
     !trashWorkspace &&
     (activeTagFilter !== null || globalSearchQuery.trim().length > 0)
 
   const documentText = useMemo(() => {
-    return sortedBlocks
-      .map((b) => b.content.trim())
-      .filter(Boolean)
-      .join('\n\n')
-  }, [sortedBlocks])
+    if (selectedProject) {
+      return projectChats
+        .map((chat) => {
+          const rows = projectBlocks.get(chat.id) ?? []
+          const body = rows
+            .map((b) => b.content.trim())
+            .filter(Boolean)
+            .join('\n\n')
+          return body ? `# ${chat.title}\n\n${body}` : ''
+        })
+        .filter(Boolean)
+        .join('\n\n')
+    }
+    return sortedBlocks.map((b) => b.content.trim()).filter(Boolean).join('\n\n')
+  }, [projectBlocks, projectChats, selectedProject, sortedBlocks])
+  const documentWordCount = useMemo(
+    () => calculateWordCount(documentText),
+    [documentText],
+  )
+
+  const resizeComposer = useCallback(
+    (el: HTMLTextAreaElement | null, ratio: number, maxCap: number) => {
+      if (!el) return
+      const maxPx = Math.min(window.innerHeight * ratio, maxCap)
+      el.style.height = '0px'
+      const scrollH = el.scrollHeight
+      const nextH = Math.min(scrollH, maxPx)
+      el.style.height = `${nextH}px`
+      el.style.overflowY = scrollH > maxPx ? 'auto' : 'hidden'
+    },
+    [],
+  )
 
   useLayoutEffect(() => {
     const el = taRef.current
     if (!el) return
-    const maxPx = Math.min(window.innerHeight * 0.4, 320)
-    el.style.height = '0px'
-    const scrollH = el.scrollHeight
-    const nextH = Math.min(scrollH, maxPx)
-    el.style.height = `${nextH}px`
-    el.style.overflowY = scrollH > maxPx ? 'auto' : 'hidden'
-  }, [draft])
+    resizeComposer(el, 0.4, 320)
+  }, [draft, resizeComposer])
+
+  useLayoutEffect(() => {
+    if (!composerExpanded) return
+    resizeComposer(fullscreenTaRef.current, 0.75, 640)
+    fullscreenTaRef.current?.focus()
+  }, [composerExpanded, draft, resizeComposer])
 
   useEffect(() => {
     if (discoveryActive) return
@@ -94,10 +171,13 @@ export function ChatView({
   const send = useCallback(() => {
     const text = draft.replace(/\r\n/g, '\n')
     if (!text.trim()) return
+    if (mainView === 'document') {
+      setPendingNewBlockFocus(true)
+    }
     addBlock(text)
     setDraft('')
     setEditingId(null)
-  }, [addBlock, draft])
+  }, [addBlock, draft, mainView])
 
   const readTxtFile = useCallback((file: File) => {
     return new Promise<string>((resolve, reject) => {
@@ -113,9 +193,9 @@ export function ChatView({
   }, [])
 
   const openAttachmentPicker = useCallback(() => {
-    if (!activeChat || attachmentLoading) return
+    if (!activeChat || selectedProject || attachmentLoading) return
     fileInputRef.current?.click()
-  }, [activeChat, attachmentLoading])
+  }, [activeChat, selectedProject, attachmentLoading])
 
   const handleAttachmentChange = useCallback(
     async (e: ChangeEvent<HTMLInputElement>) => {
@@ -195,6 +275,77 @@ export function ChatView({
         : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100'
     }`
 
+  const centerDocumentBlock = useCallback((blockId: string) => {
+    const el = document.querySelector<HTMLElement>(
+      `[data-document-block-id="${blockId}"]`,
+    )
+    if (!el) return
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [])
+
+  const scheduleCenterDocumentBlock = useCallback(
+    (blockId: string) => {
+      if (!typewriterMode || mainView !== 'document') return
+      if (centerScrollTimerRef.current !== null) {
+        window.clearTimeout(centerScrollTimerRef.current)
+      }
+      centerScrollTimerRef.current = window.setTimeout(() => {
+        centerDocumentBlock(blockId)
+      }, 60)
+    },
+    [centerDocumentBlock, mainView, typewriterMode],
+  )
+
+  useEffect(() => {
+    return () => {
+      if (centerScrollTimerRef.current !== null) {
+        window.clearTimeout(centerScrollTimerRef.current)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!typewriterMode || mainView !== 'document') return
+    if (!focusedDocumentBlockId) return
+    scheduleCenterDocumentBlock(focusedDocumentBlockId)
+  }, [
+    focusedDocumentBlockId,
+    mainView,
+    scheduleCenterDocumentBlock,
+    typewriterMode,
+  ])
+
+  useEffect(() => {
+    if (mainView !== 'document') {
+      prevDocumentLen.current = sortedBlocks.length
+      setPendingNewBlockFocus(false)
+      return
+    }
+    if (sortedBlocks.length > prevDocumentLen.current && pendingNewBlockFocus) {
+      const latest = sortedBlocks[sortedBlocks.length - 1]
+      if (latest) {
+        setFocusedDocumentBlockId(latest.id)
+        window.requestAnimationFrame(() => {
+          const focusTarget = document.querySelector<HTMLElement>(
+            `[data-document-block-id="${latest.id}"] [role="button"]`,
+          )
+          focusTarget?.focus()
+          if (typewriterMode) {
+            centerDocumentBlock(latest.id)
+          }
+        })
+      }
+      setPendingNewBlockFocus(false)
+    }
+    prevDocumentLen.current = sortedBlocks.length
+  }, [
+    centerDocumentBlock,
+    mainView,
+    pendingNewBlockFocus,
+    sortedBlocks,
+    typewriterMode,
+  ])
+
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-zinc-50 dark:bg-zinc-950">
       <header className="relative flex h-14 shrink-0 select-none items-center border-b border-zinc-200 bg-white/80 px-4 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/80">
@@ -268,6 +419,11 @@ export function ChatView({
             </div>
           )}
         </div>
+        {!trashWorkspace && !discoveryActive && mainView === 'document' ? (
+          <div className="ml-3 text-xs font-medium text-zinc-500 dark:text-zinc-400">
+            总字数：{documentWordCount.toLocaleString()}
+          </div>
+        ) : null}
         <div className="ml-auto flex items-center">
           <ThemeToggle />
         </div>
@@ -276,8 +432,23 @@ export function ChatView({
       {!trashWorkspace &&
         !discoveryActive &&
         mainView === 'document' &&
-        activeChat && (
+        (activeChat || projectDocumentMode) && (
         <div className="flex shrink-0 select-none items-center justify-end gap-2 border-b border-zinc-200 bg-white/80 px-4 py-2 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/80">
+          <button
+            type="button"
+            onClick={() => setTypewriterMode((v) => !v)}
+            className={`flex select-none items-center gap-2 rounded-xl border px-3 py-1.5 text-sm font-medium shadow-sm transition ${
+              typewriterMode
+                ? 'border-violet-300 bg-violet-50 text-violet-700 hover:bg-violet-100 dark:border-violet-600 dark:bg-violet-900/30 dark:text-violet-200 dark:hover:bg-violet-900/40'
+                : 'border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800'
+            }`}
+            title="打字机模式"
+            aria-label="打字机模式"
+            aria-pressed={typewriterMode}
+          >
+            <Type className="h-4 w-4" />
+            {typewriterMode ? '打字机：开' : '打字机：关'}
+          </button>
           <button
             type="button"
             onClick={() => void copyAll()}
@@ -290,15 +461,29 @@ export function ChatView({
         </div>
       )}
 
-      <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4">
+      <div
+        className="flex-1 min-h-0 overflow-y-auto px-4 py-4 pb-[50vh]"
+        style={
+          mainView === 'document' && typewriterMode
+            ? { scrollPaddingTop: '40vh', scrollPaddingBottom: '40vh' }
+            : undefined
+        }
+      >
         {trashWorkspace ? (
           <TrashView />
         ) : discoveryActive ? (
           <DiscoveryWorkspace />
-        ) : !activeChat ? (
+        ) : !activeChat && !selectedProject ? (
           <p className="text-center text-sm text-zinc-500">请选择或创建一个对话</p>
         ) : mainView === 'board' ? (
-          <BoardView blocks={sortedBlocks} onDeleteBlock={softDeleteBlock} />
+          <BoardView
+            blocks={sortedBlocks}
+            selectedProjectId={selectedProject?.id}
+            projectChats={selectedProject ? projectChats : undefined}
+            onDeleteBlock={softDeleteBlock}
+            onUpdateBlockSummary={updateBlockSummary}
+            onUpdateChatSummary={updateChatSummary}
+          />
         ) : mainView === 'document' ? (
           sortedBlocks.length === 0 ? (
             <p className="text-center text-sm text-zinc-500 dark:text-zinc-400">
@@ -306,21 +491,54 @@ export function ChatView({
             </p>
           ) : (
             <article className="mx-auto max-w-3xl">
-              {sortedBlocks.map((b, i) => (
-                <Fragment key={b.id}>
-                  {i > 0 ? (
-                    <hr className="my-8 border-dashed border-gray-300 dark:border-zinc-600" />
-                  ) : null}
-                  <DocumentBlockItem
-                    block={b}
-                    editing={editingId === b.id}
-                    onStartEdit={handleStartEdit}
-                    onSave={handleSaveBlock}
-                    onCopyBlock={(id, text) => void copyBlock(id, text)}
-                    copyDone={copiedBlockId === b.id}
-                  />
-                </Fragment>
-              ))}
+              {selectedProject
+                ? projectChats.map((chat, chatIndex) => {
+                    const blocks = projectBlocks.get(chat.id) ?? []
+                    return (
+                      <Fragment key={chat.id}>
+                        <h2 className="mt-8 mb-4 text-2xl font-bold text-gray-800 dark:text-gray-200">
+                          {chat.title}
+                        </h2>
+                        {blocks.map((b, i) => (
+                          <Fragment key={b.id}>
+                            {i > 0 ? (
+                              <hr className="my-8 border-dashed border-gray-300 dark:border-zinc-600" />
+                            ) : null}
+                            <DocumentBlockItem
+                              block={b}
+                              editing={editingId === b.id}
+                              onStartEdit={handleStartEdit}
+                              onSave={handleSaveBlock}
+                              onCopyBlock={(id, text) => void copyBlock(id, text)}
+                              copyDone={copiedBlockId === b.id}
+                              focused={focusedDocumentBlockId === b.id}
+                              onFocusBlock={setFocusedDocumentBlockId}
+                            />
+                          </Fragment>
+                        ))}
+                        {chatIndex < projectChats.length - 1 ? (
+                          <hr className="my-8 border-dashed border-gray-300 dark:border-zinc-600" />
+                        ) : null}
+                      </Fragment>
+                    )
+                  })
+                : sortedBlocks.map((b, i) => (
+                    <Fragment key={b.id}>
+                      {i > 0 ? (
+                        <hr className="my-8 border-dashed border-gray-300 dark:border-zinc-600" />
+                      ) : null}
+                      <DocumentBlockItem
+                        block={b}
+                        editing={editingId === b.id}
+                        onStartEdit={handleStartEdit}
+                        onSave={handleSaveBlock}
+                        onCopyBlock={(id, text) => void copyBlock(id, text)}
+                        copyDone={copiedBlockId === b.id}
+                        focused={focusedDocumentBlockId === b.id}
+                        onFocusBlock={setFocusedDocumentBlockId}
+                      />
+                    </Fragment>
+                  ))}
             </article>
           )
         ) : sortedBlocks.length === 0 ? (
@@ -343,7 +561,9 @@ export function ChatView({
         )}
       </div>
 
-      {!trashWorkspace && !discoveryActive && mainView === 'chat' && (
+      {!trashWorkspace &&
+        !discoveryActive &&
+        (mainView === 'chat' || mainView === 'document') && (
         <div className="shrink-0 border-t border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-950">
           <div className="mx-auto max-w-3xl">
             <div className="flex items-end gap-2 rounded-3xl border border-zinc-200 bg-white px-3 py-2 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
@@ -358,7 +578,7 @@ export function ChatView({
               />
               <button
                 type="button"
-                disabled={!activeChat || attachmentLoading}
+                disabled={!activeChat || !!selectedProject || attachmentLoading}
                 onClick={openAttachmentPicker}
                 className="mb-1 flex h-10 w-10 shrink-0 select-none items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-800 disabled:pointer-events-none disabled:opacity-40 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
                 title="附加 .txt / .pdf"
@@ -383,14 +603,26 @@ export function ChatView({
                   onKeyDown={handleComposerKeyDown}
                   rows={1}
                   placeholder="输入内容…"
-                  disabled={!activeChat}
+                  disabled={!activeChat || !!selectedProject}
                   className="min-h-[44px] max-h-[320px] min-w-0 flex-1 resize-none overflow-hidden bg-transparent py-2.5 pl-1 text-base leading-relaxed text-zinc-900 outline-none placeholder:text-zinc-400 disabled:opacity-50 dark:text-zinc-100 dark:placeholder:text-zinc-500"
                   aria-label="正文输入"
                 />
               )}
               <button
                 type="button"
-                disabled={!activeChat || attachmentLoading || !draft.trim()}
+                disabled={!activeChat || !!selectedProject || attachmentLoading}
+                onClick={() => setComposerExpanded(true)}
+                className="mb-1 flex h-10 w-10 shrink-0 select-none items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-800 disabled:pointer-events-none disabled:opacity-40 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+                title="扩展输入框"
+                aria-label="扩展输入框"
+              >
+                <Maximize2 className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                disabled={
+                  !activeChat || !!selectedProject || attachmentLoading || !draft.trim()
+                }
                 onClick={() => send()}
                 className="mb-1 flex h-10 w-10 shrink-0 select-none items-center justify-center rounded-full bg-violet-600 text-white shadow-md transition hover:bg-violet-700 disabled:pointer-events-none disabled:opacity-40 dark:bg-violet-500 dark:hover:bg-violet-400"
                 title="发送（Cmd/Ctrl + Enter）"
@@ -400,11 +632,73 @@ export function ChatView({
               </button>
             </div>
             <p className="mt-2 text-center text-xs text-zinc-500 dark:text-zinc-400">
-              Enter 换行 · Cmd/Ctrl + Enter 或点击发送
+              {selectedProject
+                ? '项目聚合模式下不可直接发送，请在左侧选择具体对话后输入。'
+                : 'Enter 换行 · Cmd/Ctrl + Enter 或点击发送'}
             </p>
           </div>
         </div>
       )}
+      {composerExpanded ? (
+        <div
+          className="fixed inset-0 z-[80] flex items-end bg-black/40 p-3 md:items-center md:p-6"
+          role="presentation"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setComposerExpanded(false)
+          }}
+        >
+          <div className="w-full rounded-2xl border border-zinc-200 bg-white p-4 shadow-xl dark:border-zinc-700 dark:bg-zinc-900">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
+                专注输入
+              </p>
+              <button
+                type="button"
+                onClick={() => setComposerExpanded(false)}
+                className="rounded-lg p-2 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+                aria-label="关闭扩展输入"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <textarea
+              ref={fullscreenTaRef}
+              {...plainTextFieldProps}
+              name={plainTextFieldNames.composer}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={handleComposerKeyDown}
+              rows={6}
+              placeholder="输入内容…"
+              disabled={!activeChat || !!selectedProject}
+              className="min-h-[40vh] w-full resize-none overflow-hidden rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-base leading-relaxed text-zinc-900 outline-none dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
+              aria-label="扩展正文输入"
+            />
+            <div className="mt-3 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setComposerExpanded(false)}
+                className="rounded-xl px-4 py-2 text-sm font-medium text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
+              >
+                收起
+              </button>
+              <button
+                type="button"
+                disabled={
+                  !activeChat || !!selectedProject || attachmentLoading || !draft.trim()
+                }
+                onClick={() => {
+                  send()
+                  setComposerExpanded(false)
+                }}
+                className="rounded-xl bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:pointer-events-none disabled:opacity-40 dark:bg-violet-500 dark:hover:bg-violet-400"
+              >
+                发送
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   )
 }

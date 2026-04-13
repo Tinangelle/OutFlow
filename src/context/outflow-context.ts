@@ -9,6 +9,7 @@ export interface OutflowContextValue {
   chats: Chat[]
   activeChat: Chat | null
   activeChatId: string | null
+  activeProjectId: string | null
   /** 当前对话内未删除的块 */
   activeChatBlocks: Block[]
   theme: ThemeMode
@@ -36,23 +37,29 @@ export interface OutflowContextValue {
   aggregateTags: string[]
 
   selectChat: (id: string) => void
+  selectProject: (id: string) => void
   openTrashWorkspace: () => void
   newChat: () => void
   /** 新建项目（Project） */
   newProject: () => void
   renameProject: (id: string, title: string) => void
+  reorderProjects: (orderedIds: string[]) => void
   /** 软删除项目（移入回收站） */
   deleteProject: (id: string) => void
   renameChat: (id: string, title: string) => void
+  updateChatSummary: (id: string, summary: string) => void
+  reorderChatsInProject: (projectId: string, orderedIds: string[]) => void
   /** 软删除对话（移入回收站） */
   deleteChat: (id: string) => void
   moveChatToProject: (chatId: string, projectId: string | null) => void
   setTheme: (theme: ThemeMode) => void
   addBlock: (content: string) => void
   updateBlock: (blockId: string, content: string) => void
+  updateBlockSummary: (blockId: string, summary: string) => void
   reorderBlocks: (orderedIds: string[]) => void
   /** 软删除块（移入回收站） */
   softDeleteBlock: (blockId: string) => void
+  moveBlockToChat: (blockId: string, targetChatId: string) => void
 
   restoreProject: (id: string) => void
   restoreChat: (id: string) => void
@@ -60,6 +67,7 @@ export interface OutflowContextValue {
   permanentDeleteProject: (id: string) => void
   permanentDeleteChat: (id: string) => void
   permanentDeleteBlock: (id: string) => void
+  emptyTrash: () => void
 }
 
 export const OutflowContext = createContext<OutflowContextValue | null>(null)

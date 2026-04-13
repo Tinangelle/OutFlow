@@ -4,5 +4,6 @@ import tailwindcss from '@tailwindcss/vite'
 
 // https://vite.dev/config/
 export default defineConfig({
+  base: '/outflow/', // 这里的名字必须和你的子文件夹名完全一致
   plugins: [react(), tailwindcss()],
 })

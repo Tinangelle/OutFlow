@@ -153,6 +153,7 @@ export function TrashView() {
     permanentDeleteProject,
     permanentDeleteChat,
     permanentDeleteBlock,
+    emptyTrash,
   } = useOutflow()
 
   const empty =
@@ -170,6 +171,26 @@ export function TrashView() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-10 pb-8">
+      <div className="flex items-center justify-end">
+        <button
+          type="button"
+          onClick={() => {
+            const total =
+              trashProjects.length + trashChats.length + trashBlocks.length
+            if (
+              window.confirm(
+                `确定清空回收站吗？将永久删除其中 ${total} 个项目/对话/内容块，且不可恢复。`,
+              )
+            ) {
+              emptyTrash()
+            }
+          }}
+          className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-red-700"
+        >
+          清空回收站
+        </button>
+      </div>
+
       {trashProjects.length > 0 ? (
         <section>
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">

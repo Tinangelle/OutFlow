@@ -1,7 +1,7 @@
 import localforage from 'localforage'
 import type { Block, Chat, Project } from '../types/outflow'
 import { generateId } from './ids'
-import { sortChatsByUpdated, sortProjectsByUpdated } from './normalize'
+import { sortChatsByUpdated } from './normalize'
 import { extractTagsFromContent } from './tags'
 
 export type ThemeMode = 'light' | 'dark'
@@ -28,6 +28,7 @@ interface BlockV1 {
 interface ProjectV1 {
   id: string
   title: string
+  orderIndex?: number
   blocks: BlockV1[]
   createdAt: number
   updatedAt: number
@@ -41,13 +42,14 @@ interface PersistedStateV1 {
 }
 
 function normalizeV1Projects(projects: ProjectV1[]): ProjectV1[] {
-  return projects.map((p) => {
+  return projects.map((p, i) => {
     const missing = p.blocks.some((b) => typeof b.orderIndex !== 'number')
     const ordered = missing
       ? [...p.blocks].sort((a, b) => a.createdAt - b.createdAt)
       : [...p.blocks].sort((a, b) => a.orderIndex - b.orderIndex)
     return {
       ...p,
+      orderIndex: typeof p.orderIndex === 'number' ? p.orderIndex : i,
       blocks: ordered.map((b, i) => ({ ...b, orderIndex: i })),
     }
   })
@@ -62,6 +64,29 @@ export interface PersistedState {
   theme: ThemeMode
 }
 
+function normalizeChatOrderIndexes(chats: Chat[]): Chat[] {
+  const grouped = new Map<string, Chat[]>()
+  for (const chat of chats) {
+    if (!chat.projectId) continue
+    const arr = grouped.get(chat.projectId) ?? []
+    arr.push(chat)
+    grouped.set(chat.projectId, arr)
+  }
+  const rankMap = new Map<string, number>()
+  for (const [projectId, rows] of grouped.entries()) {
+    const hasMissing = rows.some((c) => typeof c.orderIndex !== 'number')
+    const ordered = hasMissing
+      ? [...rows].sort((a, b) => b.updatedAt - a.updatedAt)
+      : [...rows].sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0))
+    ordered.forEach((chat, i) => rankMap.set(`${projectId}:${chat.id}`, i))
+  }
+  return chats.map((chat) => {
+    if (!chat.projectId) return { ...chat, orderIndex: undefined }
+    const next = rankMap.get(`${chat.projectId}:${chat.id}`)
+    return next === undefined ? chat : { ...chat, orderIndex: next }
+  })
+}
+
 function sortBlocksInChat(blocks: Block[], chatId: string): Block[] {
   const inChat = blocks.filter((b) => b.chatId === chatId)
   const missing = inChat.some((b) => typeof b.orderIndex !== 'number')
@@ -73,7 +98,15 @@ function sortBlocksInChat(blocks: Block[], chatId: string): Block[] {
 
 /** 按对话整理 Block 的 orderIndex，并丢弃孤儿块 */
 export function normalizePersistedState(state: PersistedState): PersistedState {
-  const chatIds = new Set(state.chats.map((c) => c.id))
+  const nextProjects = state.projects
+    .map((p, i) => ({
+      ...p,
+      orderIndex: typeof p.orderIndex === 'number' ? p.orderIndex : i,
+    }))
+    .sort((a, b) => a.orderIndex - b.orderIndex)
+    .map((p, i) => ({ ...p, orderIndex: i }))
+  const nextChats = normalizeChatOrderIndexes(state.chats)
+  const chatIds = new Set(nextChats.map((c) => c.id))
   const kept = state.blocks
     .filter((b) => chatIds.has(b.chatId))
     .map((b) =>
@@ -82,10 +115,10 @@ export function normalizePersistedState(state: PersistedState): PersistedState {
         : b,
     )
   const nextBlocks: Block[] = []
-  for (const chat of state.chats) {
+  for (const chat of nextChats) {
     nextBlocks.push(...sortBlocksInChat(kept, chat.id))
   }
-  return { ...state, blocks: nextBlocks }
+  return { ...state, projects: nextProjects, chats: nextChats, blocks: nextBlocks }
 }
 
 export function migrateV1ToV2(v1: PersistedStateV1): PersistedState {
@@ -128,7 +161,13 @@ export function migrateV1ToV2(v1: PersistedStateV1): PersistedState {
   }
   return {
     version: 2,
-    projects: [],
+    projects: projectsNorm.map((p, i) => ({
+      id: p.id,
+      title: p.title,
+      orderIndex: typeof p.orderIndex === 'number' ? p.orderIndex : i,
+      createdAt: p.createdAt,
+      updatedAt: p.updatedAt,
+    })),
     chats,
     blocks,
     activeChatId,
@@ -236,14 +275,23 @@ export async function savePersisted(data: PersistedState): Promise<void> {
 
 /** 侧栏展示顺序辅助 */
 export function sortedProjectsList(projects: Project[]): Project[] {
-  return sortProjectsByUpdated(projects)
+  return [...projects].sort((a, b) => a.orderIndex - b.orderIndex)
 }
 
 export function sortedChatsInProject(
   chats: Chat[],
   projectId: string,
 ): Chat[] {
-  return sortChatsByUpdated(chats.filter((c) => c.projectId === projectId))
+  return [...chats]
+    .filter((c) => c.projectId === projectId)
+    .sort((a, b) => {
+      const ao = a.orderIndex
+      const bo = b.orderIndex
+      if (typeof ao === 'number' && typeof bo === 'number') return ao - bo
+      if (typeof ao === 'number') return -1
+      if (typeof bo === 'number') return 1
+      return b.updatedAt - a.updatedAt
+    })
 }
 
 export function sortedStandaloneChats(chats: Chat[]): Chat[] {

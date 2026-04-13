@@ -4,6 +4,8 @@ export const dragTypeChat = 'sidebar-chat'
 export const dragTypeProject = 'sidebar-project'
 /** draggable：软木板卡片 */
 export const dragTypeBlock = 'board-block'
+/** draggable：项目软木板中的对话卡片 */
+export const dragTypeBoardChat = 'board-chat'
 
 /** droppable：项目归档区 */
 export const dropTypeProject = 'sidebar-project-drop'

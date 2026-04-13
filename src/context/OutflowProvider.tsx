@@ -99,6 +99,7 @@ export function OutflowProvider({ children }: { children: ReactNode }) {
     buildInitialState(null),
   )
   const [trashWorkspace, setTrashWorkspace] = useState(false)
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(null)
   const [globalSearchQuery, setGlobalSearchQueryRaw] = useState('')
   const [activeTagFilter, setActiveTagFilter] = useState<string | null>(null)
 
@@ -138,8 +139,15 @@ export function OutflowProvider({ children }: { children: ReactNode }) {
     document.documentElement.classList.toggle('dark', state.theme === 'dark')
   }, [state, hydrated])
 
+  useEffect(() => {
+    if (!activeProjectId) return
+    const exists = state.projects.some((p) => p.id === activeProjectId && !isTrashed(p))
+    if (!exists) setActiveProjectId(null)
+  }, [activeProjectId, state.projects])
+
   const selectChat = useCallback((id: string) => {
     setTrashWorkspace(false)
+    setActiveProjectId(null)
     setGlobalSearchQuery('')
     setActiveTagFilter(null)
     setState((s) => {
@@ -148,14 +156,24 @@ export function OutflowProvider({ children }: { children: ReactNode }) {
     })
   }, [setGlobalSearchQuery])
 
+  const selectProject = useCallback((id: string) => {
+    setTrashWorkspace(false)
+    setGlobalSearchQuery('')
+    setActiveTagFilter(null)
+    setActiveProjectId(id)
+    setState((s) => ({ ...s, activeChatId: null }))
+  }, [setGlobalSearchQuery])
+
   const openTrashWorkspace = useCallback(() => {
     setGlobalSearchQuery('')
     setActiveTagFilter(null)
     setTrashWorkspace(true)
+    setActiveProjectId(null)
   }, [setGlobalSearchQuery])
 
   const newChat = useCallback(() => {
     setTrashWorkspace(false)
+    setActiveProjectId(null)
     setGlobalSearchQuery('')
     setActiveTagFilter(null)
     const c = createChat(null)
@@ -169,10 +187,13 @@ export function OutflowProvider({ children }: { children: ReactNode }) {
   }, [setGlobalSearchQuery])
 
   const newProject = useCallback(() => {
-    setState((s) => ({
-      ...s,
-      projects: [...s.projects, createProject()],
-    }))
+    setState((s) => {
+      const maxOrder = s.projects.reduce((m, p) => Math.max(m, p.orderIndex), -1)
+      return {
+        ...s,
+        projects: [...s.projects, createProject(maxOrder + 1)],
+      }
+    })
   }, [])
 
   const renameProject = useCallback((id: string, title: string) => {
@@ -184,6 +205,27 @@ export function OutflowProvider({ children }: { children: ReactNode }) {
         p.id !== id ? p : { ...p, title: nextTitle, updatedAt: now },
       ),
     }))
+  }, [])
+
+  const reorderProjects = useCallback((orderedIds: string[]) => {
+    setState((s) => {
+      const visible = s.projects.filter((p) => !isTrashed(p))
+      const idSet = new Set(visible.map((p) => p.id))
+      if (
+        orderedIds.length !== visible.length ||
+        !orderedIds.every((id) => idSet.has(id))
+      ) {
+        return s
+      }
+      const rank = new Map(orderedIds.map((id, i) => [id, i]))
+      return {
+        ...s,
+        projects: s.projects.map((p) => {
+          const nextOrder = rank.get(p.id)
+          return nextOrder === undefined ? p : { ...p, orderIndex: nextOrder }
+        }),
+      }
+    })
   }, [])
 
   const deleteProject = useCallback((id: string) => {
@@ -209,6 +251,49 @@ export function OutflowProvider({ children }: { children: ReactNode }) {
       ),
     }))
   }, [])
+
+  const updateChatSummary = useCallback((id: string, summary: string) => {
+    const nextSummary = summary.replace(/\r\n/g, '\n').trim()
+    const now = Date.now()
+    setState((s) => ({
+      ...s,
+      chats: s.chats.map((c) =>
+        c.id !== id ? c : { ...c, summary: nextSummary || undefined, updatedAt: now },
+      ),
+    }))
+  }, [])
+
+  const reorderChatsInProject = useCallback(
+    (projectId: string, orderedIds: string[]) => {
+      setState((s) => {
+        const inProject = s.chats.filter(
+          (c) => c.projectId === projectId && !isTrashed(c),
+        )
+        const idSet = new Set(inProject.map((c) => c.id))
+        if (
+          orderedIds.length !== inProject.length ||
+          !orderedIds.every((id) => idSet.has(id))
+        ) {
+          return s
+        }
+        const rank = new Map(orderedIds.map((id, i) => [id, i]))
+        const now = Date.now()
+        return {
+          ...s,
+          chats: s.chats.map((c) => {
+            const nextOrder = rank.get(c.id)
+            return nextOrder === undefined
+              ? c
+              : { ...c, orderIndex: nextOrder, updatedAt: now }
+          }),
+          projects: s.projects.map((p) =>
+            p.id === projectId ? { ...p, updatedAt: now } : p,
+          ),
+        }
+      })
+    },
+    [],
+  )
 
   const deleteChat = useCallback((id: string) => {
     const now = Date.now()
@@ -236,10 +321,18 @@ export function OutflowProvider({ children }: { children: ReactNode }) {
         } else if (chat.projectId === null) {
           return s
         }
+        const targetOrderIndex =
+          projectId === null
+            ? undefined
+            : s.chats
+                .filter((c) => c.projectId === projectId && !isTrashed(c))
+                .reduce((m, c) => Math.max(m, c.orderIndex ?? -1), -1) + 1
         return {
           ...s,
           chats: s.chats.map((c) =>
-            c.id !== chatId ? c : { ...c, projectId, updatedAt: now },
+            c.id !== chatId
+              ? c
+              : { ...c, projectId, orderIndex: targetOrderIndex, updatedAt: now },
           ),
           projects:
             projectId !== null
@@ -284,11 +377,10 @@ export function OutflowProvider({ children }: { children: ReactNode }) {
   const updateBlock = useCallback((blockId: string, content: string) => {
     const text = content.replace(/\r\n/g, '\n')
     setState((s) => {
-      const cid = s.activeChatId
-      if (!cid) return s
       const now = Date.now()
       const block = s.blocks.find((b) => b.id === blockId)
-      if (!block || block.chatId !== cid || isTrashed(block)) return s
+      if (!block || isTrashed(block)) return s
+      const cid = block.chatId
       const chat = s.chats.find((c) => c.id === cid)
       if (!chat || !chatVisible(chat, s.projects)) return s
       return {
@@ -301,6 +393,33 @@ export function OutflowProvider({ children }: { children: ReactNode }) {
                 content: text,
                 updatedAt: now,
                 tags: extractTagsFromContent(text),
+              },
+        ),
+        chats: s.chats.map((c) =>
+          c.id !== cid ? c : { ...c, updatedAt: now },
+        ),
+      }
+    })
+  }, [])
+
+  const updateBlockSummary = useCallback((blockId: string, summary: string) => {
+    const nextSummary = summary.replace(/\r\n/g, '\n').trim()
+    setState((s) => {
+      const now = Date.now()
+      const block = s.blocks.find((b) => b.id === blockId)
+      if (!block || isTrashed(block)) return s
+      const cid = block.chatId
+      const chat = s.chats.find((c) => c.id === cid)
+      if (!chat || !chatVisible(chat, s.projects)) return s
+      return {
+        ...s,
+        blocks: s.blocks.map((b) =>
+          b.id !== blockId
+            ? b
+            : {
+                ...b,
+                summary: nextSummary || undefined,
+                updatedAt: now,
               },
         ),
         chats: s.chats.map((c) =>
@@ -353,6 +472,41 @@ export function OutflowProvider({ children }: { children: ReactNode }) {
         b.id !== blockId ? b : { ...b, deletedAt: now, updatedAt: now },
       ),
     }))
+  }, [])
+
+  const moveBlockToChat = useCallback((blockId: string, targetChatId: string) => {
+    setState((s) => {
+      const block = s.blocks.find((b) => b.id === blockId)
+      if (!block || isTrashed(block)) return s
+      const targetChat = s.chats.find((c) => c.id === targetChatId)
+      if (!targetChat || !chatVisible(targetChat, s.projects)) return s
+      if (block.chatId === targetChatId) return s
+
+      const now = Date.now()
+      const targetBlocks = s.blocks.filter(
+        (b) => b.chatId === targetChatId && !isTrashed(b),
+      )
+      const maxOrder = targetBlocks.reduce((m, b) => Math.max(m, b.orderIndex), -1)
+
+      return {
+        ...s,
+        blocks: s.blocks.map((b) =>
+          b.id !== blockId
+            ? b
+            : {
+                ...b,
+                chatId: targetChatId,
+                orderIndex: maxOrder + 1,
+                updatedAt: now,
+              },
+        ),
+        chats: s.chats.map((c) =>
+          c.id === targetChatId || c.id === block.chatId
+            ? { ...c, updatedAt: now }
+            : c,
+        ),
+      }
+    })
   }, [])
 
   const restoreProject = useCallback((id: string) => {
@@ -423,6 +577,27 @@ export function OutflowProvider({ children }: { children: ReactNode }) {
     }))
   }, [])
 
+  const emptyTrash = useCallback(() => {
+    setState((s) => {
+      const trashedProjectIds = new Set(
+        s.projects.filter(isTrashed).map((p) => p.id),
+      )
+      const next: PersistedState = {
+        ...s,
+        projects: s.projects.filter((p) => !isTrashed(p)),
+        chats: s.chats
+          .filter((c) => !isTrashed(c))
+          .map((c) =>
+            c.projectId && trashedProjectIds.has(c.projectId)
+              ? { ...c, projectId: null }
+              : c,
+          ),
+        blocks: s.blocks.filter((b) => !isTrashed(b)),
+      }
+      return ensureActiveChat(normalizePersistedState(next))
+    })
+  }, [])
+
   const activeChat = useMemo(() => {
     if (!state.activeChatId) return null
     const c = state.chats.find((x) => x.id === state.activeChatId) ?? null
@@ -490,6 +665,7 @@ export function OutflowProvider({ children }: { children: ReactNode }) {
       chats: chatsVisible,
       activeChat,
       activeChatId: state.activeChatId,
+      activeProjectId,
       activeChatBlocks,
       theme: state.theme,
       trashWorkspace,
@@ -506,31 +682,39 @@ export function OutflowProvider({ children }: { children: ReactNode }) {
       discoverableBlocks,
       aggregateTags,
       selectChat,
+      selectProject,
       openTrashWorkspace,
       newChat,
       newProject,
       renameProject,
+      reorderProjects,
       deleteProject,
       renameChat,
+      updateChatSummary,
+      reorderChatsInProject,
       deleteChat,
       moveChatToProject,
       setTheme,
       addBlock,
       updateBlock,
+      updateBlockSummary,
       reorderBlocks,
       softDeleteBlock,
+      moveBlockToChat,
       restoreProject,
       restoreChat,
       restoreBlock,
       permanentDeleteProject,
       permanentDeleteChat,
       permanentDeleteBlock,
+      emptyTrash,
     }),
     [
       projectsVisible,
       chatsVisible,
       activeChat,
       state.activeChatId,
+      activeProjectId,
       activeChatBlocks,
       state.theme,
       trashWorkspace,
@@ -547,25 +731,32 @@ export function OutflowProvider({ children }: { children: ReactNode }) {
       discoverableBlocks,
       aggregateTags,
       selectChat,
+      selectProject,
       openTrashWorkspace,
       newChat,
       newProject,
       renameProject,
+      reorderProjects,
       deleteProject,
       renameChat,
+      updateChatSummary,
+      reorderChatsInProject,
       deleteChat,
       moveChatToProject,
       setTheme,
       addBlock,
       updateBlock,
+      updateBlockSummary,
       reorderBlocks,
       softDeleteBlock,
+      moveBlockToChat,
       restoreProject,
       restoreChat,
       restoreBlock,
       permanentDeleteProject,
       permanentDeleteChat,
       permanentDeleteBlock,
+      emptyTrash,
     ],
   )
 

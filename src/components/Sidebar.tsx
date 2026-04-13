@@ -3,7 +3,6 @@ import {
   ChevronDown,
   ChevronRight,
   FolderOpen,
-  GripVertical,
   MessageSquare,
   Pencil,
   Plus,
@@ -82,6 +81,8 @@ function SidebarRenameField({
         onChange={(e) => onChange(e.target.value)}
         onBlur={onBlur}
         onKeyDown={onKeyDown}
+        onClick={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
         className={`${className} select-text`}
         aria-label={ariaLabel}
       />
@@ -130,11 +131,15 @@ function SidebarChatSelectButton({
 
 function SidebarProjectTitleLongPress({
   project,
+  active,
   narrow,
+  onSelect,
   onTouchLongPress,
 }: {
   project: Project
+  active: boolean
   narrow: boolean
+  onSelect: () => void
   onTouchLongPress: (p: Project) => void
 }) {
   const lp = useLongPress({
@@ -142,17 +147,21 @@ function SidebarProjectTitleLongPress({
     onLongPress: () => onTouchLongPress(project),
   })
   return (
-    <div
-      className="min-w-0 flex-1 touch-manipulation select-none"
+    <button
+      type="button"
+      className={`min-w-0 flex-1 touch-manipulation select-none rounded-lg px-1 py-2 text-left text-sm font-medium transition ${
+        active
+          ? 'bg-violet-100 text-violet-900 dark:bg-violet-950/60 dark:text-violet-100'
+          : 'text-zinc-800 hover:bg-zinc-100 dark:text-zinc-100 dark:hover:bg-zinc-800'
+      }`}
       onPointerDown={lp.onPointerDown}
       onPointerUp={lp.onPointerUp}
       onPointerCancel={lp.onPointerCancel}
       onPointerLeave={lp.onPointerLeave}
+      onClick={onSelect}
     >
-      <span className="line-clamp-2 px-1 py-2 text-sm font-medium text-zinc-800 dark:text-zinc-100">
-        {project.title}
-      </span>
-    </div>
+      <span className="line-clamp-2">{project.title}</span>
+    </button>
   )
 }
 
@@ -231,21 +240,26 @@ const DraggableSidebarChatRow = function DraggableSidebarChatRow({
   chat,
   active,
   dragTitle,
+  disabled = false,
   children,
 }: {
   chat: Chat
   active: boolean
   dragTitle: string
+  disabled?: boolean
   children: ReactNode
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: sidebarChatDndId(chat.id),
     data: { type: dragTypeChat, chatId: chat.id },
+    disabled,
   })
 
   return (
     <div
       ref={setNodeRef}
+      {...listeners}
+      {...attributes}
       className={`group flex select-none items-stretch gap-0.5 rounded-lg transition ${
         isDragging ? 'z-20 opacity-40' : ''
       } ${
@@ -254,17 +268,13 @@ const DraggableSidebarChatRow = function DraggableSidebarChatRow({
           : 'hover:bg-zinc-100 dark:hover:bg-zinc-800'
       }`}
     >
-      <button
-        type="button"
-        className="flex shrink-0 cursor-grab touch-none select-none items-center rounded-l-lg px-1 text-zinc-400 hover:text-zinc-600 active:cursor-grabbing dark:hover:text-zinc-300"
+      <div
+        className="min-w-0 flex-1 cursor-grab active:cursor-grabbing"
         title={dragTitle}
         aria-label="拖拽移动对话"
-        {...listeners}
-        {...attributes}
       >
-        <GripVertical className="h-4 w-4" />
-      </button>
-      <div className="min-w-0 flex-1">{children}</div>
+        {children}
+      </div>
     </div>
   )
 }
@@ -272,35 +282,48 @@ const DraggableSidebarChatRow = function DraggableSidebarChatRow({
 function DraggableProjectRow({
   project,
   dragTitle,
+  disabled = false,
   children,
 }: {
   project: Project
   dragTitle: string
+  disabled?: boolean
   children: ReactNode
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: sidebarProjectDndId(project.id),
     data: { type: dragTypeProject, projectId: project.id },
+    disabled,
   })
+  const { setNodeRef: setDropRef } = useDroppable({
+    id: sidebarProjectDndId(project.id),
+    data: { type: dragTypeProject, projectId: project.id },
+  })
+
+  const bindNodeRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      setNodeRef(node)
+      setDropRef(node)
+    },
+    [setDropRef, setNodeRef],
+  )
 
   return (
     <div
-      ref={setNodeRef}
+      ref={bindNodeRef}
+      {...listeners}
+      {...attributes}
       className={`flex select-none items-stretch gap-0.5 ${
         isDragging ? 'opacity-40' : ''
       }`}
     >
-      <button
-        type="button"
-        className="flex shrink-0 cursor-grab touch-none select-none items-center rounded-lg px-1 text-zinc-400 hover:text-zinc-600 active:cursor-grabbing dark:hover:text-zinc-300"
+      <div
+        className="min-w-0 flex-1 cursor-grab active:cursor-grabbing"
         title={dragTitle}
         aria-label="拖拽移动项目"
-        {...listeners}
-        {...attributes}
       >
-        <GripVertical className="h-4 w-4" />
-      </button>
-      <div className="min-w-0 flex-1">{children}</div>
+        {children}
+      </div>
     </div>
   )
 }
@@ -392,7 +415,9 @@ export function Sidebar({ isOpen = false, onNavigate }: SidebarProps) {
     projects,
     chats,
     activeChatId,
+    activeProjectId,
     selectChat,
+    selectProject,
     newChat,
     newProject,
     renameProject,
@@ -416,6 +441,7 @@ export function Sidebar({ isOpen = false, onNavigate }: SidebarProps) {
   const [renamingFolderId, setRenamingFolderId] = useState<string | null>(null)
   const [renameDraft, setRenameDraft] = useState('')
   const renameInputRef = useRef<HTMLInputElement>(null)
+  const committingRenameRef = useRef(false)
 
   const [deleteFolderTarget, setDeleteFolderTarget] = useState<Project | null>(
     null,
@@ -442,16 +468,33 @@ export function Sidebar({ isOpen = false, onNavigate }: SidebarProps) {
     el.select()
   }, [renamingChatId, renamingFolderId])
 
+  const clearRenameState = useCallback(() => {
+    setRenamingChatId(null)
+    setRenamingFolderId(null)
+    setRenameDraft('')
+  }, [])
+
   const commitRename = useCallback(() => {
+    if (committingRenameRef.current) return
+    committingRenameRef.current = true
     const title = renameDraft
     if (renamingChatId) {
       renameChat(renamingChatId, title)
-      setRenamingChatId(null)
     } else if (renamingFolderId) {
       renameProject(renamingFolderId, title)
-      setRenamingFolderId(null)
     }
-  }, [renameDraft, renamingChatId, renamingFolderId, renameChat, renameProject])
+    clearRenameState()
+    queueMicrotask(() => {
+      committingRenameRef.current = false
+    })
+  }, [
+    clearRenameState,
+    renameDraft,
+    renamingChatId,
+    renamingFolderId,
+    renameChat,
+    renameProject,
+  ])
 
   const startRenameChat = useCallback((c: Chat) => {
     setRenamingChatId(c.id)
@@ -481,7 +524,7 @@ export function Sidebar({ isOpen = false, onNavigate }: SidebarProps) {
     chat: Chat,
     opts: { inDraggable?: boolean } = {},
   ) => {
-    const active = chat.id === activeChatId
+    const active = activeProjectId === null && chat.id === activeChatId
     const renaming = renamingChatId === chat.id
     const inner = renaming ? (
       <SidebarRenameField
@@ -493,11 +536,13 @@ export function Sidebar({ isOpen = false, onNavigate }: SidebarProps) {
         onKeyDown={(e) => {
           if (e.key === 'Enter') {
             e.preventDefault()
+            e.stopPropagation()
             commitRename()
           }
           if (e.key === 'Escape') {
             e.preventDefault()
-            setRenamingChatId(null)
+            e.stopPropagation()
+            clearRenameState()
           }
         }}
         className="w-full rounded-lg bg-white px-3 py-2 text-base text-zinc-900 outline-none ring-2 ring-violet-500 dark:bg-zinc-900 dark:text-zinc-100"
@@ -646,27 +691,41 @@ export function Sidebar({ isOpen = false, onNavigate }: SidebarProps) {
               {projectList.map((proj) => {
                 const expandedProj = isExpanded(proj.id)
                 const nested = sortedChatsInProject(chats, proj.id)
+                const handleSelectProjectRow = () => {
+                  setExpanded((e) => ({ ...e, [proj.id]: true }))
+                  selectProject(proj.id)
+                  onNavigate?.()
+                }
                 return (
                   <li key={proj.id}>
                     <ProjectDropShell projectId={proj.id}>
                       <div
                         className={`rounded-lg border border-transparent ${
-                          expandedProj ? 'bg-zinc-50 dark:bg-zinc-800/40' : ''
+                          activeProjectId === proj.id
+                            ? 'bg-violet-100 dark:bg-violet-950/60'
+                            : expandedProj
+                              ? 'bg-zinc-50 dark:bg-zinc-800/40'
+                              : ''
                         }`}
                       >
                         <DraggableProjectRow
                           project={proj}
                           dragTitle="拖入底部回收站删除，或拖入独立区移出项目"
+                          disabled={renamingFolderId === proj.id}
                         >
-                          <div className="flex min-w-0 flex-1 items-stretch gap-0.5">
+                          <div
+                            className="flex min-w-0 flex-1 items-stretch gap-0.5"
+                            onClick={handleSelectProjectRow}
+                          >
                             <button
                               type="button"
-                              onClick={() =>
-                                setExpanded((e) => {
-                                  const open = e[proj.id] !== false
-                                  return { ...e, [proj.id]: open ? false : true }
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setExpanded((st) => {
+                                  const open = st[proj.id] !== false
+                                  return { ...st, [proj.id]: open ? false : true }
                                 })
-                              }
+                              }}
                               className="flex shrink-0 select-none items-center rounded-lg p-2 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
                               aria-expanded={expandedProj}
                               title={expandedProj ? '收起' : '展开'}
@@ -687,11 +746,13 @@ export function Sidebar({ isOpen = false, onNavigate }: SidebarProps) {
                                 onKeyDown={(e) => {
                                   if (e.key === 'Enter') {
                                     e.preventDefault()
+                                    e.stopPropagation()
                                     commitRename()
                                   }
                                   if (e.key === 'Escape') {
                                     e.preventDefault()
-                                    setRenamingFolderId(null)
+                                    e.stopPropagation()
+                                    clearRenameState()
                                   }
                                 }}
                                 className="min-w-0 flex-1 rounded-lg bg-white px-2 py-2 text-base text-zinc-900 outline-none ring-2 ring-violet-500 dark:bg-zinc-900 dark:text-zinc-100"
@@ -701,7 +762,9 @@ export function Sidebar({ isOpen = false, onNavigate }: SidebarProps) {
                               <div className="group flex min-w-0 flex-1 items-center gap-0.5">
                                 <SidebarProjectTitleLongPress
                                   project={proj}
+                                  active={activeProjectId === proj.id}
                                   narrow={narrow}
+                                  onSelect={handleSelectProjectRow}
                                   onTouchLongPress={(p) =>
                                     setTouchSheet({ kind: 'project', project: p })
                                   }
@@ -709,7 +772,10 @@ export function Sidebar({ isOpen = false, onNavigate }: SidebarProps) {
                                 <div className="hidden shrink-0 items-center gap-0.5 pr-1 opacity-0 transition group-hover:opacity-100 focus-within:opacity-100 md:flex">
                                   <button
                                     type="button"
-                                    onClick={() => startRenameFolder(proj)}
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      startRenameFolder(proj)
+                                    }}
                                     className="select-none rounded-md p-1.5 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-800 dark:hover:bg-zinc-700 dark:hover:text-zinc-100"
                                     title="重命名项目"
                                     aria-label="重命名项目"
@@ -718,7 +784,10 @@ export function Sidebar({ isOpen = false, onNavigate }: SidebarProps) {
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={() => setDeleteFolderTarget(proj)}
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      setDeleteFolderTarget(proj)
+                                    }}
                                     className="select-none rounded-md p-1.5 text-zinc-500 hover:bg-red-100 hover:text-red-700 dark:hover:bg-red-950/50 dark:hover:text-red-400"
                                     title="移入回收站"
                                     aria-label="移入回收站"
@@ -738,6 +807,7 @@ export function Sidebar({ isOpen = false, onNavigate }: SidebarProps) {
                                   chat={c}
                                   active={c.id === activeChatId}
                                   dragTitle="拖回下方独立区或拖入其他文件夹"
+                                  disabled={renamingChatId === c.id}
                                 >
                                   {renderChatButton(c, { inDraggable: true })}
                                 </DraggableSidebarChatRow>
@@ -768,6 +838,7 @@ export function Sidebar({ isOpen = false, onNavigate }: SidebarProps) {
                     chat={c}
                     active={c.id === activeChatId}
                     dragTitle="拖入上方文件夹以归档"
+                    disabled={renamingChatId === c.id}
                   >
                     {renderChatButton(c, { inDraggable: true })}
                   </DraggableSidebarChatRow>
@@ -777,7 +848,9 @@ export function Sidebar({ isOpen = false, onNavigate }: SidebarProps) {
           </StandaloneRootDropZone>
       </nav>
 
-      <div className="shrink-0 border-t border-zinc-200 p-2 dark:border-zinc-800">
+      <TrashDropZone active={trashWorkspace} onOpen={handleOpenTrash} />
+
+      <div className="shrink-0 p-2">
         <button
           type="button"
           onClick={() => {
@@ -792,8 +865,6 @@ export function Sidebar({ isOpen = false, onNavigate }: SidebarProps) {
           设置
         </button>
       </div>
-
-      <TrashDropZone active={trashWorkspace} onOpen={handleOpenTrash} />
 
     </aside>
     </div>
