@@ -76,6 +76,7 @@ export function ChatView({
   const fileInputRef = useRef<HTMLInputElement>(null)
   const endRef = useRef<HTMLDivElement>(null)
   const prevLen = useRef(0)
+  const prevChatIdForScroll = useRef<string | undefined>(undefined)
   const prevDocumentLen = useRef(0)
   const centerScrollTimerRef = useRef<number | null>(null)
   const selectedProject = useMemo(
@@ -134,6 +135,13 @@ export function ChatView({
     [documentText],
   )
 
+  const scrollAreaBottomPaddingClass =
+    mainView === 'document' && typewriterMode
+      ? 'pb-[50vh]'
+      : mainView === 'chat' || mainView === 'document'
+        ? 'pb-40'
+        : 'pb-4'
+
   const resizeComposer = useCallback(
     (el: HTMLTextAreaElement | null, ratio: number, maxCap: number) => {
       if (!el) return
@@ -159,14 +167,29 @@ export function ChatView({
     fullscreenTaRef.current?.focus()
   }, [composerExpanded, draft, resizeComposer])
 
-  useEffect(() => {
-    if (discoveryActive) return
-    if (mainView !== 'chat') return
-    if (sortedBlocks.length > prevLen.current) {
-      endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+  useLayoutEffect(() => {
+    if (discoveryActive || mainView !== 'chat') return
+    const chatId = activeChat?.id
+    const switched = chatId !== prevChatIdForScroll.current
+    prevChatIdForScroll.current = chatId
+
+    if (sortedBlocks.length === 0) {
+      prevLen.current = 0
+      return
     }
+
+    if (switched) {
+      prevLen.current = sortedBlocks.length
+      endRef.current?.scrollIntoView({ block: 'end', behavior: 'auto' })
+      return
+    }
+
+    const grew = sortedBlocks.length > prevLen.current
     prevLen.current = sortedBlocks.length
-  }, [sortedBlocks.length, mainView, discoveryActive])
+    if (grew) {
+      endRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' })
+    }
+  }, [activeChat?.id, sortedBlocks.length, mainView, discoveryActive])
 
   const send = useCallback(() => {
     const text = draft.replace(/\r\n/g, '\n')
@@ -462,7 +485,7 @@ export function ChatView({
       )}
 
       <div
-        className="flex-1 min-h-0 overflow-y-auto px-4 py-4 pb-[50vh]"
+        className={`flex-1 min-h-0 overflow-y-auto px-4 pt-4 ${scrollAreaBottomPaddingClass}`}
         style={
           mainView === 'document' && typewriterMode
             ? { scrollPaddingTop: '40vh', scrollPaddingBottom: '40vh' }
@@ -546,7 +569,7 @@ export function ChatView({
             在下方输入内容，点击发送或按 Cmd/Ctrl + Enter 添加第一条气泡。
           </p>
         ) : (
-          <div className="mx-auto flex max-w-3xl flex-col gap-3">
+          <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-col justify-start gap-3">
             {sortedBlocks.map((b) => (
               <BlockBubble
                 key={b.id}
@@ -556,7 +579,7 @@ export function ChatView({
                 onSave={handleSaveBlock}
               />
             ))}
-            <div ref={endRef} aria-hidden />
+            <div ref={endRef} className="h-0 shrink-0" aria-hidden />
           </div>
         )}
       </div>
