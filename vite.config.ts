@@ -11,7 +11,7 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['icon-192.jpg', 'icon-512.png'],
+      includeAssets: ['icon-192.png', 'icon-512.png'],
       manifest: {
         name: 'OutFlow',
         short_name: 'OutFlow',
@@ -24,13 +24,13 @@ export default defineConfig({
         background_color: '#ffffff',
         icons: [
           {
-            src: 'icon-192.jpg?v=20260420',
+            src: 'icon-192.png?v=20260422',
             sizes: '192x192',
-            type: 'image/jpeg',
+            type: 'image/png',
             purpose: 'any',
           },
           {
-            src: 'icon-512.png?v=20260420',
+            src: 'icon-512.png?v=20260422',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'any maskable',

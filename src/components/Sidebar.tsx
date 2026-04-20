@@ -2,7 +2,6 @@ import { useDraggable, useDroppable } from '@dnd-kit/core'
 import {
   ChevronDown,
   ChevronRight,
-  FolderOpen,
   MessageSquare,
   Pencil,
   Plus,
@@ -43,6 +42,7 @@ import {
 } from '../lib/plain-text-field-props'
 import type { Chat, Project } from '../types/outflow'
 import { SettingsModal } from './SettingsModal'
+import { WhaleFolderIcon } from './WhaleFolderIcon'
 
 type TouchSheetState =
   | { kind: 'chat'; chat: Chat }
@@ -627,7 +627,7 @@ export function Sidebar({ isOpen = false, onNavigate }: SidebarProps) {
     <aside className="flex h-full min-h-0 w-full select-none flex-col border-r border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
       <div className="flex h-14 items-center justify-between gap-2 border-b border-zinc-200 px-3 dark:border-zinc-800">
         <span className="flex min-w-0 items-center gap-2 text-sm font-semibold text-zinc-800 dark:text-zinc-100">
-          <FolderOpen className="h-4 w-4 shrink-0 text-violet-600 dark:text-violet-400" />
+          <WhaleFolderIcon className="h-4 w-4 shrink-0 rounded-sm object-cover" />
           OutFlow
         </span>
         <div className="flex shrink-0 items-center gap-0.5">

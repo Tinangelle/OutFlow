@@ -10,7 +10,7 @@ import {
   type DragStartEvent,
 } from '@dnd-kit/core'
 import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable'
-import { FolderOpen, GripVertical, MessageSquare } from 'lucide-react'
+import { GripVertical, MessageSquare } from 'lucide-react'
 import { useCallback, useState, type ReactNode } from 'react'
 import { useOutflow } from '../hooks/useOutflow'
 import {
@@ -23,6 +23,7 @@ import {
   dropTypeTrash,
 } from '../lib/dnd-ids'
 import { blockPreview } from '../lib/block-preview'
+import { WhaleFolderIcon } from './WhaleFolderIcon'
 
 type OverlayState =
   | { kind: 'chat'; chatId: string }
@@ -71,7 +72,7 @@ function DragOverlayContent({ state }: { state: OverlayState }) {
     return (
       <OverlayCard>
         <div className="flex items-center gap-2 text-sm font-medium text-zinc-800 dark:text-zinc-100">
-          <FolderOpen className="h-4 w-4 shrink-0 text-violet-600 dark:text-violet-400" />
+          <WhaleFolderIcon className="h-4 w-4 shrink-0 rounded-sm object-cover" />
           <OverlayTitle title={p?.title ?? '项目'} isOverlay />
         </div>
       </OverlayCard>

@@ -1,4 +1,4 @@
-import { FolderOpen, MessageSquare } from 'lucide-react'
+import { MessageSquare } from 'lucide-react'
 import { useMemo } from 'react'
 import { useOutflow } from '../hooks/useOutflow'
 import {
@@ -6,6 +6,7 @@ import {
   sortedProjectsList,
   sortedStandaloneChats,
 } from '../lib/storage'
+import { WhaleFolderIcon } from './WhaleFolderIcon'
 
 export function BlockMoveMenu({
   blockId,
@@ -37,7 +38,7 @@ export function BlockMoveMenu({
           return (
             <div key={project.id} className="rounded-lg bg-zinc-50 p-1 dark:bg-zinc-800/40">
               <div className="mb-1 flex items-center gap-1.5 px-1.5 py-1 text-xs font-medium text-zinc-700 dark:text-zinc-200">
-                <FolderOpen className="h-3.5 w-3.5" />
+                <WhaleFolderIcon className="h-3.5 w-3.5 rounded-sm object-cover" />
                 {project.title}
               </div>
               <div className="space-y-0.5">
