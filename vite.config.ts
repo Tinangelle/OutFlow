@@ -24,13 +24,13 @@ export default defineConfig({
         background_color: '#ffffff',
         icons: [
           {
-            src: 'icon-192.jpg',
+            src: 'icon-192.jpg?v=20260420',
             sizes: '192x192',
             type: 'image/jpeg',
             purpose: 'any',
           },
           {
-            src: 'icon-512.png',
+            src: 'icon-512.png?v=20260420',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'any maskable',
