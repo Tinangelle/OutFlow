@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import TextareaAutosize from 'react-textarea-autosize'
+import { getIsIOSLike } from '../lib/ios'
 import {
   plainTextFieldNames,
   plainTextFieldProps,
@@ -21,6 +22,7 @@ export function BlockEditForm({
   onFocus?: () => void
 }) {
   const [draft, setDraft] = useState(() => block.content)
+  const [isIOSLike] = useState(getIsIOSLike)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const fieldName =
     variant === 'document'
@@ -47,8 +49,11 @@ export function BlockEditForm({
     el.setSelectionRange(len, len)
   }, [variant])
 
-  const docTextareaClass =
-    'max-h-none w-full resize-none overflow-hidden border-0 bg-transparent p-0 text-base leading-relaxed text-zinc-800 shadow-none outline-none ring-0 selection:bg-violet-200/80 focus:outline-none focus:ring-0 dark:text-zinc-100 dark:selection:bg-violet-900/50'
+  // Match DocumentBlockItem: prose-sm (desktop) / default prose 16px on iOS to avoid Safari input zoom.
+  const docTextareaClass = [
+    'max-h-none w-full resize-none overflow-hidden border-0 bg-transparent p-0 text-zinc-800 shadow-none outline-none ring-0 selection:bg-violet-200/80 focus:outline-none focus:ring-0 dark:text-zinc-100 dark:selection:bg-violet-900/50',
+    isIOSLike ? 'text-base leading-7' : 'text-sm leading-6',
+  ].join(' ')
 
   if (variant === 'document') {
     return (

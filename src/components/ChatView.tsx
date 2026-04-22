@@ -135,12 +135,9 @@ export function ChatView({
     [documentText],
   )
 
+  // 只预留输入条上方一缝间隙（~5rem），勿用 vh/过大 pb，避免滚到底整段可滚动“灰带”
   const scrollAreaBottomPaddingClass =
-    mainView === 'document' && typewriterMode
-      ? 'pb-[50vh]'
-      : mainView === 'chat' || mainView === 'document'
-        ? 'pb-40'
-        : 'pb-4'
+    mainView === 'chat' || mainView === 'document' ? 'pb-20' : 'pb-4'
 
   const resizeComposer = useCallback(
     (el: HTMLTextAreaElement | null, ratio: number, maxCap: number) => {
@@ -488,7 +485,7 @@ export function ChatView({
         className={`flex-1 min-h-0 overflow-y-auto px-4 pt-4 ${scrollAreaBottomPaddingClass}`}
         style={
           mainView === 'document' && typewriterMode
-            ? { scrollPaddingTop: '40vh', scrollPaddingBottom: '40vh' }
+            ? { scrollPaddingTop: '6rem', scrollPaddingBottom: '6rem' }
             : undefined
         }
       >
@@ -569,7 +566,7 @@ export function ChatView({
             在下方输入内容，点击发送或按 Cmd/Ctrl + Enter 添加第一条气泡。
           </p>
         ) : (
-          <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-col justify-start gap-3">
+          <div className="mx-auto flex w-full min-w-0 max-w-3xl flex-col gap-3">
             {sortedBlocks.map((b) => (
               <BlockBubble
                 key={b.id}
@@ -579,7 +576,7 @@ export function ChatView({
                 onSave={handleSaveBlock}
               />
             ))}
-            <div ref={endRef} className="h-0 shrink-0" aria-hidden />
+            <div ref={endRef} className="h-px w-full shrink-0" aria-hidden />
           </div>
         )}
       </div>
@@ -589,7 +586,7 @@ export function ChatView({
         (mainView === 'chat' || mainView === 'document') && (
         <div className="shrink-0 border-t border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-950">
           <div className="mx-auto max-w-3xl">
-            <div className="flex items-end gap-2 rounded-3xl border border-zinc-200 bg-white px-3 py-2 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
+            <div className="relative rounded-3xl border border-zinc-200 bg-white px-3 pb-2 pt-2 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
               <input
                 ref={fileInputRef}
                 type="file"
@@ -602,16 +599,16 @@ export function ChatView({
               <button
                 type="button"
                 disabled={!activeChat || !!selectedProject || attachmentLoading}
-                onClick={openAttachmentPicker}
-                className="mb-1 flex h-10 w-10 shrink-0 select-none items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-800 disabled:pointer-events-none disabled:opacity-40 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
-                title="附加 .txt / .pdf"
-                aria-label="附加文件"
+                onClick={() => setComposerExpanded(true)}
+                className="absolute right-2 top-2 z-10 flex h-9 w-9 shrink-0 select-none items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-800 disabled:pointer-events-none disabled:opacity-40 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+                title="扩展输入框"
+                aria-label="扩展输入框"
               >
-                <Paperclip className="h-5 w-5" />
+                <Maximize2 className="h-4 w-4" />
               </button>
               {attachmentLoading ? (
                 <div
-                  className="min-h-[44px] min-w-0 flex-1 py-2.5 pl-1 text-base leading-relaxed text-zinc-500 dark:text-zinc-400"
+                  className="min-h-[44px] w-full pr-10 py-2.5 pl-1 text-base leading-relaxed text-zinc-500 dark:text-zinc-400"
                   aria-live="polite"
                 >
                   Loading...
@@ -627,32 +624,34 @@ export function ChatView({
                   rows={1}
                   placeholder="输入内容…"
                   disabled={!activeChat || !!selectedProject}
-                  className="min-h-[44px] max-h-[320px] min-w-0 flex-1 resize-none overflow-hidden bg-transparent py-2.5 pl-1 text-base leading-relaxed text-zinc-900 outline-none placeholder:text-zinc-400 disabled:opacity-50 dark:text-zinc-100 dark:placeholder:text-zinc-500"
+                  className="min-h-[44px] max-h-[320px] w-full resize-none overflow-hidden bg-transparent py-2.5 pl-1 pr-10 text-base leading-relaxed text-zinc-900 outline-none placeholder:text-zinc-400 disabled:opacity-50 dark:text-zinc-100 dark:placeholder:text-zinc-500"
                   aria-label="正文输入"
                 />
               )}
-              <button
-                type="button"
-                disabled={!activeChat || !!selectedProject || attachmentLoading}
-                onClick={() => setComposerExpanded(true)}
-                className="mb-1 flex h-10 w-10 shrink-0 select-none items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-800 disabled:pointer-events-none disabled:opacity-40 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
-                title="扩展输入框"
-                aria-label="扩展输入框"
-              >
-                <Maximize2 className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                disabled={
-                  !activeChat || !!selectedProject || attachmentLoading || !draft.trim()
-                }
-                onClick={() => send()}
-                className="mb-1 flex h-10 w-10 shrink-0 select-none items-center justify-center rounded-full bg-violet-600 text-white shadow-md transition hover:bg-violet-700 disabled:pointer-events-none disabled:opacity-40 dark:bg-violet-500 dark:hover:bg-violet-400"
-                title="发送（Cmd/Ctrl + Enter）"
-                aria-label="发送"
-              >
-                <SendHorizontal className="h-5 w-5" />
-              </button>
+              <div className="mt-1 flex min-h-10 items-center justify-between gap-2">
+                <button
+                  type="button"
+                  disabled={!activeChat || !!selectedProject || attachmentLoading}
+                  onClick={openAttachmentPicker}
+                  className="flex h-10 w-10 shrink-0 select-none items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-800 disabled:pointer-events-none disabled:opacity-40 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+                  title="附加 .txt / .pdf"
+                  aria-label="附加文件"
+                >
+                  <Paperclip className="h-5 w-5" />
+                </button>
+                <button
+                  type="button"
+                  disabled={
+                    !activeChat || !!selectedProject || attachmentLoading || !draft.trim()
+                  }
+                  onClick={() => send()}
+                  className="flex h-10 w-10 shrink-0 select-none items-center justify-center rounded-full bg-violet-600 text-white shadow-md transition hover:bg-violet-700 disabled:pointer-events-none disabled:opacity-40 dark:bg-violet-500 dark:hover:bg-violet-400"
+                  title="发送（Cmd/Ctrl + Enter）"
+                  aria-label="发送"
+                >
+                  <SendHorizontal className="h-5 w-5" />
+                </button>
+              </div>
             </div>
             <p className="mt-2 text-center text-xs text-zinc-500 dark:text-zinc-400">
               {selectedProject

@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import { Copy } from 'lucide-react'
+import { getIsIOSLike } from '../lib/ios'
 import { calculateWordCount } from '../lib/utils'
 import { BlockEditForm } from './BlockEditForm'
 import { MarkdownContent } from './MarkdownContent'
@@ -23,6 +25,14 @@ export function DocumentBlockItem({
   focused: boolean
   onFocusBlock: (id: string | null) => void
 }) {
+  const [isIOSLike] = useState(getIsIOSLike)
+  const readProseClass = [
+    'prose max-w-none dark:prose-invert prose-headings:font-semibold prose-p:my-3 prose-ul:my-3 prose-ol:my-3 prose-li:my-0.5',
+    isIOSLike ? '' : 'prose-sm',
+  ]
+    .filter(Boolean)
+    .join(' ')
+
   return (
     <div className="group relative select-none" data-document-block-id={block.id}>
       {editing ? (
@@ -71,11 +81,17 @@ export function DocumentBlockItem({
           className="touch-callout-default cursor-pointer select-text rounded-lg pr-8 text-left outline-none transition hover:bg-zinc-100/80 focus-visible:ring-2 focus-visible:ring-violet-500 dark:hover:bg-zinc-900/50"
         >
           {block.content.trim() ? (
-            <MarkdownContent className="prose prose-sm max-w-none dark:prose-invert prose-headings:font-semibold prose-p:my-3 prose-ul:my-3 prose-ol:my-3 prose-li:my-0.5">
+            <MarkdownContent className={readProseClass}>
               {block.content}
             </MarkdownContent>
           ) : (
-            <p className="py-2 text-sm text-zinc-400 italic dark:text-zinc-500">
+            <p
+              className={
+                isIOSLike
+                  ? 'py-2 text-base text-zinc-400 italic dark:text-zinc-500'
+                  : 'py-2 text-sm text-zinc-400 italic dark:text-zinc-500'
+              }
+            >
               空白块，点击编辑
             </p>
           )}
