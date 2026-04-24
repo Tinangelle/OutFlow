@@ -15,11 +15,14 @@ export function BlockEditForm({
   onSave,
   variant = 'bubble',
   onFocus,
+  readProseClassName,
 }: {
   block: Block
   onSave: (id: string, content: string) => void
   variant?: 'bubble' | 'document'
   onFocus?: () => void
+  /** 与 DocumentBlockItem 只读区一致，避免切到编辑时字号/行高突变 */
+  readProseClassName?: string
 }) {
   const [draft, setDraft] = useState(() => block.content)
   const [isIOSLike] = useState(getIsIOSLike)
@@ -44,19 +47,25 @@ export function BlockEditForm({
   useLayoutEffect(() => {
     const el = inputRef.current
     if (!el) return
-    el.focus()
+    el.focus({ preventScroll: true })
     const len = el.value.length
-    el.setSelectionRange(len, len)
+    // Defer: ensures caret/scroll position in textarea applies after focus without page scroll
+    const id = requestAnimationFrame(() => {
+      el.setSelectionRange(len, len)
+    })
+    return () => cancelAnimationFrame(id)
   }, [variant])
 
-  // Match DocumentBlockItem: prose-sm (desktop) / default prose 16px on iOS to avoid Safari input zoom.
+  // 与 @tailwindcss/typography 的 prose / prose-sm 正文行高一致，避免从 Markdown 只读切到纯文本时「字突然变大/行变疏」
   const docTextareaClass = [
-    'max-h-none w-full resize-none overflow-hidden border-0 bg-transparent p-0 text-zinc-800 shadow-none outline-none ring-0 selection:bg-violet-200/80 focus:outline-none focus:ring-0 dark:text-zinc-100 dark:selection:bg-violet-900/50',
-    isIOSLike ? 'text-base leading-7' : 'text-sm leading-6',
+    'not-prose max-h-none w-full min-h-0 resize-none overflow-hidden border-0 bg-transparent p-0 text-left text-zinc-800 shadow-none outline-none ring-0 selection:bg-violet-200/80 focus:outline-none focus:ring-0 dark:text-zinc-100 dark:selection:bg-violet-900/50',
+    isIOSLike ? 'text-base leading-7' : 'text-sm leading-[1.7142857]',
   ].join(' ')
 
+  const docLineRows = Math.max(1, draft.split('\n').length)
+
   if (variant === 'document') {
-    return (
+    const field = (
       <TextareaAutosize
         ref={inputRef}
         {...plainTextFieldProps}
@@ -71,11 +80,17 @@ export function BlockEditForm({
           }
         }}
         onBlur={() => onSave(block.id, draft)}
-        minRows={1}
+        minRows={docLineRows}
         className={docTextareaClass}
         aria-label="编辑内容块"
       />
     )
+    if (readProseClassName) {
+      return (
+        <div className={`${readProseClassName} [&_textarea]:mt-0`}>{field}</div>
+      )
+    }
+    return field
   }
 
   return (

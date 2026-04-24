@@ -41,6 +41,7 @@ export function DocumentBlockItem({
           block={block}
           onSave={onSave}
           variant="document"
+          readProseClassName={readProseClass}
           onFocus={() => onFocusBlock(block.id)}
         />
       ) : null}

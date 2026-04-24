@@ -327,8 +327,11 @@ export function ChatView({
   useEffect(() => {
     if (!typewriterMode || mainView !== 'document') return
     if (!focusedDocumentBlockId) return
+    // 编辑中不要再居中滚屏，避免和 preventScroll/当前阅读位置冲突
+    if (editingId && editingId === focusedDocumentBlockId) return
     scheduleCenterDocumentBlock(focusedDocumentBlockId)
   }, [
+    editingId,
     focusedDocumentBlockId,
     mainView,
     scheduleCenterDocumentBlock,
