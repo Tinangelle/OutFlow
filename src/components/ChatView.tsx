@@ -67,6 +67,7 @@ export function ChatView({
   const [focusedDocumentBlockId, setFocusedDocumentBlockId] = useState<string | null>(
     null,
   )
+  const [documentDrafts, setDocumentDrafts] = useState<Record<string, string>>({})
   const [typewriterMode, setTypewriterMode] = useState(false)
   const [pendingNewBlockFocus, setPendingNewBlockFocus] = useState(false)
   const [attachmentLoading, setAttachmentLoading] = useState(false)
@@ -79,6 +80,7 @@ export function ChatView({
   const prevChatIdForScroll = useRef<string | undefined>(undefined)
   const prevDocumentLen = useRef(0)
   const centerScrollTimerRef = useRef<number | null>(null)
+  const documentInputRefs = useRef<Record<string, HTMLTextAreaElement | null>>({})
   const selectedProject = useMemo(
     () => projects.find((p) => p.id === activeProjectId) ?? null,
     [projects, activeProjectId],
@@ -104,7 +106,7 @@ export function ChatView({
       byChat.set(c.id, rows)
     }
     return byChat
-  }, [discoverableBlocks, projectChats, selectedProject, activeChatBlocks])
+  }, [discoverableBlocks, projectChats, selectedProject])
   const sortedBlocks = selectedProject
     ? projectChats.flatMap((c) => projectBlocks.get(c.id) ?? [])
     : activeChatBlocks
@@ -134,6 +136,37 @@ export function ChatView({
     () => calculateWordCount(documentText),
     [documentText],
   )
+  const documentBlockIds = useMemo(
+    () => sortedBlocks.map((b) => b.id),
+    [sortedBlocks],
+  )
+  const documentBlockIndexById = useMemo(
+    () => new Map(documentBlockIds.map((id, idx) => [id, idx])),
+    [documentBlockIds],
+  )
+
+  useEffect(() => {
+    setDocumentDrafts((prev) => {
+      const next: Record<string, string> = {}
+      let changed = false
+      for (const block of sortedBlocks) {
+        const prevValue = prev[block.id]
+        if (prevValue === undefined) {
+          next[block.id] = block.content
+          changed = true
+        } else {
+          next[block.id] = prevValue
+        }
+      }
+      for (const oldId of Object.keys(prev)) {
+        if (!(oldId in next)) {
+          changed = true
+        }
+      }
+      if (!changed) return prev
+      return next
+    })
+  }, [sortedBlocks])
 
   // 只预留输入条上方一缝间隙（~5rem），勿用 vh/过大 pb，避免滚到底整段可滚动“灰带”
   const scrollAreaBottomPaddingClass =
@@ -267,6 +300,24 @@ export function ChatView({
     setEditingId(null)
   }
 
+  const handleDocumentChange = useCallback((id: string, content: string) => {
+    setDocumentDrafts((prev) => {
+      if (prev[id] === content) return prev
+      return { ...prev, [id]: content }
+    })
+  }, [])
+
+  const handleDocumentBlurSave = useCallback(
+    (id: string) => {
+      const block = sortedBlocks.find((b) => b.id === id)
+      if (!block) return
+      const draftValue = documentDrafts[id] ?? block.content
+      if (draftValue === block.content) return
+      updateBlock(id, draftValue)
+    },
+    [documentDrafts, sortedBlocks, updateBlock],
+  )
+
   const copyAll = useCallback(async () => {
     if (!documentText) return
     try {
@@ -316,6 +367,59 @@ export function ChatView({
     [centerDocumentBlock, mainView, typewriterMode],
   )
 
+  const registerDocumentInput = useCallback(
+    (id: string, el: HTMLTextAreaElement | null) => {
+      documentInputRefs.current[id] = el
+    },
+    [],
+  )
+
+  const focusDocumentInput = useCallback(
+    (id: string, caret: 'start' | 'end') => {
+      const target = documentInputRefs.current[id]
+      if (!target) return
+      target.focus({ preventScroll: !typewriterMode })
+      const pos = caret === 'end' ? target.value.length : 0
+      target.setSelectionRange(pos, pos)
+      setFocusedDocumentBlockId(id)
+      if (typewriterMode) {
+        scheduleCenterDocumentBlock(id)
+      }
+    },
+    [scheduleCenterDocumentBlock, typewriterMode],
+  )
+
+  const handleDocumentKeyDown = useCallback(
+    (id: string, e: KeyboardEvent<HTMLTextAreaElement>) => {
+      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return
+      const index = documentBlockIndexById.get(id)
+      if (index === undefined) return
+      const start = e.currentTarget.selectionStart
+      const end = e.currentTarget.selectionEnd
+      const valueLength = e.currentTarget.value.length
+      if (start === null || end === null) return
+
+      if (e.key === 'ArrowUp' && start === 0 && end === 0 && index > 0) {
+        e.preventDefault()
+        const prevId = documentBlockIds[index - 1]
+        if (prevId) focusDocumentInput(prevId, 'end')
+        return
+      }
+
+      if (
+        e.key === 'ArrowDown' &&
+        start === valueLength &&
+        end === valueLength &&
+        index < documentBlockIds.length - 1
+      ) {
+        e.preventDefault()
+        const nextId = documentBlockIds[index + 1]
+        if (nextId) focusDocumentInput(nextId, 'start')
+      }
+    },
+    [documentBlockIds, documentBlockIndexById, focusDocumentInput],
+  )
+
   useEffect(() => {
     return () => {
       if (centerScrollTimerRef.current !== null) {
@@ -349,10 +453,7 @@ export function ChatView({
       if (latest) {
         setFocusedDocumentBlockId(latest.id)
         window.requestAnimationFrame(() => {
-          const focusTarget = document.querySelector<HTMLElement>(
-            `[data-document-block-id="${latest.id}"] [role="button"]`,
-          )
-          focusTarget?.focus()
+          focusDocumentInput(latest.id, 'end')
           if (typewriterMode) {
             centerDocumentBlock(latest.id)
           }
@@ -363,6 +464,7 @@ export function ChatView({
     prevDocumentLen.current = sortedBlocks.length
   }, [
     centerDocumentBlock,
+    focusDocumentInput,
     mainView,
     pendingNewBlockFocus,
     sortedBlocks,
@@ -513,54 +615,57 @@ export function ChatView({
               暂无内容块，切换到聊天视图添加内容。
             </p>
           ) : (
-            <article className="mx-auto max-w-3xl">
+            <article
+              className={
+                selectedProject
+                  ? 'mx-auto max-w-3xl'
+                  : 'mx-auto max-w-3xl divide-y divide-zinc-200/70 dark:divide-zinc-600/50'
+              }
+            >
               {selectedProject
-                ? projectChats.map((chat, chatIndex) => {
+                ? projectChats.map((chat) => {
                     const blocks = projectBlocks.get(chat.id) ?? []
                     return (
                       <Fragment key={chat.id}>
-                        <h2 className="mt-8 mb-4 text-2xl font-bold text-gray-800 dark:text-gray-200">
+                        <h2 className="mb-4 mt-8 text-2xl font-bold text-gray-800 first:mt-0 dark:text-gray-200">
                           {chat.title}
                         </h2>
-                        {blocks.map((b, i) => (
-                          <Fragment key={b.id}>
-                            {i > 0 ? (
-                              <hr className="my-8 border-dashed border-gray-300 dark:border-zinc-600" />
-                            ) : null}
-                            <DocumentBlockItem
-                              block={b}
-                              editing={editingId === b.id}
-                              onStartEdit={handleStartEdit}
-                              onSave={handleSaveBlock}
-                              onCopyBlock={(id, text) => void copyBlock(id, text)}
-                              copyDone={copiedBlockId === b.id}
-                              focused={focusedDocumentBlockId === b.id}
-                              onFocusBlock={setFocusedDocumentBlockId}
-                            />
-                          </Fragment>
-                        ))}
-                        {chatIndex < projectChats.length - 1 ? (
-                          <hr className="my-8 border-dashed border-gray-300 dark:border-zinc-600" />
-                        ) : null}
+                        <div className="divide-y divide-zinc-200/70 dark:divide-zinc-600/50">
+                          {blocks.map((b) => (
+                            <div key={b.id} className="py-4 first:pt-0 last:pb-0">
+                              <DocumentBlockItem
+                                block={b}
+                                value={documentDrafts[b.id] ?? b.content}
+                                onChange={handleDocumentChange}
+                                onBlurSave={handleDocumentBlurSave}
+                                onKeyDown={handleDocumentKeyDown}
+                                onRegisterInput={registerDocumentInput}
+                                onCopyBlock={(id, text) => void copyBlock(id, text)}
+                                copyDone={copiedBlockId === b.id}
+                                focused={focusedDocumentBlockId === b.id}
+                                onFocusBlock={setFocusedDocumentBlockId}
+                              />
+                            </div>
+                          ))}
+                        </div>
                       </Fragment>
                     )
                   })
-                : sortedBlocks.map((b, i) => (
-                    <Fragment key={b.id}>
-                      {i > 0 ? (
-                        <hr className="my-8 border-dashed border-gray-300 dark:border-zinc-600" />
-                      ) : null}
+                : sortedBlocks.map((b) => (
+                    <div key={b.id} className="py-4 first:pt-0 last:pb-0">
                       <DocumentBlockItem
                         block={b}
-                        editing={editingId === b.id}
-                        onStartEdit={handleStartEdit}
-                        onSave={handleSaveBlock}
+                        value={documentDrafts[b.id] ?? b.content}
+                        onChange={handleDocumentChange}
+                        onBlurSave={handleDocumentBlurSave}
+                        onKeyDown={handleDocumentKeyDown}
+                        onRegisterInput={registerDocumentInput}
                         onCopyBlock={(id, text) => void copyBlock(id, text)}
                         copyDone={copiedBlockId === b.id}
                         focused={focusedDocumentBlockId === b.id}
                         onFocusBlock={setFocusedDocumentBlockId}
                       />
-                    </Fragment>
+                    </div>
                   ))}
             </article>
           )

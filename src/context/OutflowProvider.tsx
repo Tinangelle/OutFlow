@@ -139,10 +139,12 @@ export function OutflowProvider({ children }: { children: ReactNode }) {
     document.documentElement.classList.toggle('dark', state.theme === 'dark')
   }, [state, hydrated])
 
-  useEffect(() => {
-    if (!activeProjectId) return
-    const exists = state.projects.some((p) => p.id === activeProjectId && !isTrashed(p))
-    if (!exists) setActiveProjectId(null)
+  const activeProjectIdResolved = useMemo(() => {
+    if (!activeProjectId) return null
+    const exists = state.projects.some(
+      (p) => p.id === activeProjectId && !isTrashed(p),
+    )
+    return exists ? activeProjectId : null
   }, [activeProjectId, state.projects])
 
   const selectChat = useCallback((id: string) => {
@@ -665,7 +667,7 @@ export function OutflowProvider({ children }: { children: ReactNode }) {
       chats: chatsVisible,
       activeChat,
       activeChatId: state.activeChatId,
-      activeProjectId,
+      activeProjectId: activeProjectIdResolved,
       activeChatBlocks,
       theme: state.theme,
       trashWorkspace,
@@ -714,7 +716,7 @@ export function OutflowProvider({ children }: { children: ReactNode }) {
       chatsVisible,
       activeChat,
       state.activeChatId,
-      activeProjectId,
+      activeProjectIdResolved,
       activeChatBlocks,
       state.theme,
       trashWorkspace,

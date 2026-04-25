@@ -226,6 +226,8 @@ export function BoardView({
   onUpdateBlockSummary,
   onUpdateChatSummary,
 }: BoardViewProps) {
+  const blockIds = useMemo(() => blocks.map((b) => b.id), [blocks])
+
   if (selectedProjectId) {
     const chatCards = projectChats ?? []
     const chatIds = chatCards.map((c) => c.id)
@@ -253,8 +255,6 @@ export function BoardView({
     )
   }
 
-  const ids = useMemo(() => blocks.map((b) => b.id), [blocks])
-
   if (blocks.length === 0) {
     return (
       <p className="text-center text-sm text-zinc-500 dark:text-zinc-400">
@@ -264,7 +264,7 @@ export function BoardView({
   }
 
   return (
-    <SortableContext items={ids} strategy={rectSortingStrategy}>
+    <SortableContext items={blockIds} strategy={rectSortingStrategy}>
       <div className="mx-auto grid max-w-5xl grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3">
         {blocks.map((b) => (
           <SortableCard
