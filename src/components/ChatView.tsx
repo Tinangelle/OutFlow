@@ -69,7 +69,6 @@ export function ChatView({
   )
   const [documentDrafts, setDocumentDrafts] = useState<Record<string, string>>({})
   const [typewriterMode, setTypewriterMode] = useState(false)
-  const [pendingNewBlockFocus, setPendingNewBlockFocus] = useState(false)
   const [attachmentLoading, setAttachmentLoading] = useState(false)
   const [composerExpanded, setComposerExpanded] = useState(false)
   const taRef = useRef<HTMLTextAreaElement>(null)
@@ -78,7 +77,6 @@ export function ChatView({
   const endRef = useRef<HTMLDivElement>(null)
   const prevLen = useRef(0)
   const prevChatIdForScroll = useRef<string | undefined>(undefined)
-  const prevDocumentLen = useRef(0)
   const centerScrollTimerRef = useRef<number | null>(null)
   const documentInputRefs = useRef<Record<string, HTMLTextAreaElement | null>>({})
   const selectedProject = useMemo(
@@ -169,8 +167,7 @@ export function ChatView({
   }, [sortedBlocks])
 
   // 只预留输入条上方一缝间隙（~5rem），勿用 vh/过大 pb，避免滚到底整段可滚动“灰带”
-  const scrollAreaBottomPaddingClass =
-    mainView === 'chat' || mainView === 'document' ? 'pb-20' : 'pb-4'
+  const scrollAreaBottomPaddingClass = mainView === 'chat' ? 'pb-20' : 'pb-4'
 
   const resizeComposer = useCallback(
     (el: HTMLTextAreaElement | null, ratio: number, maxCap: number) => {
@@ -224,13 +221,10 @@ export function ChatView({
   const send = useCallback(() => {
     const text = draft.replace(/\r\n/g, '\n')
     if (!text.trim()) return
-    if (mainView === 'document') {
-      setPendingNewBlockFocus(true)
-    }
     addBlock(text)
     setDraft('')
     setEditingId(null)
-  }, [addBlock, draft, mainView])
+  }, [addBlock, draft])
 
   const readTxtFile = useCallback((file: File) => {
     return new Promise<string>((resolve, reject) => {
@@ -342,7 +336,7 @@ export function ChatView({
   const toggleClass = (on: boolean) =>
     `flex h-9 w-9 select-none items-center justify-center rounded-lg transition ${
       on
-        ? 'bg-violet-600 text-white shadow-sm dark:bg-violet-500'
+        ? 'bg-zinc-900 text-white shadow-sm dark:bg-zinc-100 dark:text-zinc-900'
         : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100'
     }`
 
@@ -442,35 +436,6 @@ export function ChatView({
     typewriterMode,
   ])
 
-  useEffect(() => {
-    if (mainView !== 'document') {
-      prevDocumentLen.current = sortedBlocks.length
-      setPendingNewBlockFocus(false)
-      return
-    }
-    if (sortedBlocks.length > prevDocumentLen.current && pendingNewBlockFocus) {
-      const latest = sortedBlocks[sortedBlocks.length - 1]
-      if (latest) {
-        setFocusedDocumentBlockId(latest.id)
-        window.requestAnimationFrame(() => {
-          focusDocumentInput(latest.id, 'end')
-          if (typewriterMode) {
-            centerDocumentBlock(latest.id)
-          }
-        })
-      }
-      setPendingNewBlockFocus(false)
-    }
-    prevDocumentLen.current = sortedBlocks.length
-  }, [
-    centerDocumentBlock,
-    focusDocumentInput,
-    mainView,
-    pendingNewBlockFocus,
-    sortedBlocks,
-    typewriterMode,
-  ])
-
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-zinc-50 dark:bg-zinc-950">
       <header className="relative flex h-14 shrink-0 select-none items-center border-b border-zinc-200 bg-white/80 px-4 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/80">
@@ -500,7 +465,7 @@ export function ChatView({
               <button
                 type="button"
                 onClick={() => clearGlobalDiscovery()}
-                className="text-xs font-medium text-violet-600 hover:underline dark:text-violet-400"
+                className="text-xs font-medium text-zinc-700 hover:underline dark:text-zinc-300"
               >
                 返回对话
               </button>
@@ -564,7 +529,7 @@ export function ChatView({
             onClick={() => setTypewriterMode((v) => !v)}
             className={`flex select-none items-center gap-2 rounded-xl border px-3 py-1.5 text-sm font-medium shadow-sm transition ${
               typewriterMode
-                ? 'border-violet-300 bg-violet-50 text-violet-700 hover:bg-violet-100 dark:border-violet-600 dark:bg-violet-900/30 dark:text-violet-200 dark:hover:bg-violet-900/40'
+                ? 'border-zinc-400 bg-zinc-100 text-zinc-800 hover:bg-zinc-200 dark:border-zinc-500 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700'
                 : 'border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800'
             }`}
             title="打字机模式"
@@ -689,9 +654,7 @@ export function ChatView({
         )}
       </div>
 
-      {!trashWorkspace &&
-        !discoveryActive &&
-        (mainView === 'chat' || mainView === 'document') && (
+      {!trashWorkspace && !discoveryActive && mainView === 'chat' && (
         <div className="shrink-0 border-t border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-950">
           <div className="mx-auto max-w-3xl">
             <div className="relative rounded-3xl border border-zinc-200 bg-white px-3 pb-2 pt-2 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
@@ -753,7 +716,7 @@ export function ChatView({
                     !activeChat || !!selectedProject || attachmentLoading || !draft.trim()
                   }
                   onClick={() => send()}
-                  className="flex h-10 w-10 shrink-0 select-none items-center justify-center rounded-full bg-violet-600 text-white shadow-md transition hover:bg-violet-700 disabled:pointer-events-none disabled:opacity-40 dark:bg-violet-500 dark:hover:bg-violet-400"
+                  className="flex h-10 w-10 shrink-0 select-none items-center justify-center rounded-full bg-zinc-900 text-white shadow-md transition hover:bg-zinc-800 disabled:pointer-events-none disabled:opacity-40 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
                   title="发送（Cmd/Ctrl + Enter）"
                   aria-label="发送"
                 >
@@ -769,7 +732,7 @@ export function ChatView({
           </div>
         </div>
       )}
-      {composerExpanded ? (
+      {mainView === 'chat' && composerExpanded ? (
         <div
           className="fixed inset-0 z-[80] flex items-end bg-black/40 p-3 md:items-center md:p-6"
           role="presentation"
@@ -821,7 +784,7 @@ export function ChatView({
                   send()
                   setComposerExpanded(false)
                 }}
-                className="rounded-xl bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:pointer-events-none disabled:opacity-40 dark:bg-violet-500 dark:hover:bg-violet-400"
+                className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:pointer-events-none disabled:opacity-40 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
               >
                 发送
               </button>

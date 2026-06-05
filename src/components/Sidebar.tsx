@@ -120,7 +120,7 @@ function SidebarChatSelectButton({
       }}
       className={`min-w-0 flex-1 touch-manipulation select-none rounded-lg px-3 py-2 text-left text-sm transition ${
         active
-          ? 'font-medium text-violet-900 dark:text-violet-100'
+          ? 'font-medium text-zinc-900 dark:text-zinc-100'
           : 'text-zinc-700 dark:text-zinc-300'
       }`}
     >
@@ -151,7 +151,7 @@ function SidebarProjectTitleLongPress({
       type="button"
       className={`min-w-0 flex-1 touch-manipulation select-none rounded-lg px-1 py-2 text-left text-sm font-medium transition ${
         active
-          ? 'bg-violet-100 text-violet-900 dark:bg-violet-950/60 dark:text-violet-100'
+          ? 'bg-zinc-200 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100'
           : 'text-zinc-800 hover:bg-zinc-100 dark:text-zinc-100 dark:hover:bg-zinc-800'
       }`}
       onPointerDown={lp.onPointerDown}
@@ -195,7 +195,7 @@ function SidebarSearchPanel({
           value={globalSearchQuery}
           onChange={(e) => setGlobalSearchQuery(e.target.value)}
           placeholder="搜索所有气泡正文…"
-          className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-base text-zinc-900 outline-none ring-violet-500/0 transition focus:ring-2 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
+          className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-base text-zinc-900 outline-none ring-zinc-500/0 transition focus:ring-2 focus:ring-zinc-900 dark:focus:ring-zinc-400 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
           aria-label="全局搜索"
         />
       </form>
@@ -221,8 +221,8 @@ function SidebarSearchPanel({
                   }}
                   className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
                     active
-                      ? 'bg-violet-600 text-white shadow-sm dark:bg-violet-500'
-                      : 'bg-white text-zinc-700 ring-1 ring-zinc-200 hover:bg-violet-50 hover:ring-violet-300 dark:bg-zinc-900 dark:text-zinc-200 dark:ring-zinc-600 dark:hover:bg-violet-950/40 dark:hover:ring-violet-500'
+                      ? 'bg-zinc-900 text-white shadow-sm dark:bg-zinc-100 dark:text-zinc-900'
+                      : 'bg-white text-zinc-700 ring-1 ring-zinc-200 hover:bg-zinc-100 hover:ring-zinc-400 dark:bg-zinc-900 dark:text-zinc-200 dark:ring-zinc-600 dark:hover:bg-zinc-800 dark:hover:ring-zinc-500'
                   }`}
                 >
                   {tag}
@@ -264,7 +264,7 @@ const DraggableSidebarChatRow = function DraggableSidebarChatRow({
         isDragging ? 'z-20 opacity-40' : ''
       } ${
         active
-          ? 'bg-violet-100 dark:bg-violet-950/60'
+          ? 'bg-zinc-200 dark:bg-zinc-800'
           : 'hover:bg-zinc-100 dark:hover:bg-zinc-800'
       }`}
     >
@@ -343,7 +343,7 @@ function ProjectDropShell({
   return (
     <div
       ref={setNodeRef}
-      className={`rounded-lg ${isOver ? 'ring-2 ring-violet-500/70 ring-offset-2 ring-offset-white dark:ring-offset-zinc-900' : ''}`}
+      className={`rounded-lg ${isOver ? 'ring-2 ring-zinc-600/70 ring-offset-2 ring-offset-white dark:ring-offset-zinc-900' : ''}`}
     >
       {children}
     </div>
@@ -359,7 +359,7 @@ function StandaloneRootDropZone({ children }: { children: ReactNode }) {
   return (
     <div
       ref={setNodeRef}
-      className={`rounded-lg ${isOver ? 'ring-2 ring-violet-500/70 ring-offset-2 ring-offset-white ring-dashed dark:ring-offset-zinc-900' : ''}`}
+      className={`rounded-lg ${isOver ? 'ring-2 ring-zinc-600/70 ring-offset-2 ring-offset-white ring-dashed dark:ring-offset-zinc-900' : ''}`}
     >
       {children}
     </div>
@@ -392,7 +392,7 @@ function TrashDropZone({
         onClick={onOpen}
         className={`flex w-full select-none items-center justify-center gap-2 rounded-xl border-2 border-dashed py-3 text-xs font-semibold transition ${
           active
-            ? 'border-violet-500 bg-violet-50 text-violet-900 dark:border-violet-400 dark:bg-violet-950/40 dark:text-violet-100'
+            ? 'border-zinc-900 bg-zinc-100 text-zinc-900 dark:border-zinc-400 dark:bg-zinc-800/60 dark:text-zinc-100'
             : 'border-zinc-300 text-zinc-600 hover:border-red-400 hover:bg-red-50/80 hover:text-red-800 dark:border-zinc-600 dark:text-zinc-300 dark:hover:border-red-500 dark:hover:bg-red-950/20 dark:hover:text-red-200'
         }`}
       >
@@ -545,13 +545,13 @@ export function Sidebar({ isOpen = false, onNavigate }: SidebarProps) {
             clearRenameState()
           }
         }}
-        className="w-full rounded-lg bg-white px-3 py-2 text-base text-zinc-900 outline-none ring-2 ring-violet-500 dark:bg-zinc-900 dark:text-zinc-100"
+        className="w-full rounded-lg bg-white px-3 py-2 text-base text-zinc-900 outline-none ring-2 ring-zinc-900 dark:ring-zinc-400 dark:bg-zinc-900 dark:text-zinc-100"
         ariaLabel="对话标题"
       />
     ) : (
       <div
         className={`flex items-stretch gap-0.5 rounded-lg ${
-          opts.inDraggable ? '' : active ? 'bg-violet-100 dark:bg-violet-950/60' : 'hover:bg-zinc-100 dark:hover:bg-zinc-800'
+          opts.inDraggable ? '' : active ? 'bg-zinc-200 dark:bg-zinc-800' : 'hover:bg-zinc-100 dark:hover:bg-zinc-800'
         }`}
       >
         <SidebarChatSelectButton
@@ -645,7 +645,7 @@ export function Sidebar({ isOpen = false, onNavigate }: SidebarProps) {
             onClick={() => setSearchPanelOpen((o) => !o)}
             className={`flex h-9 w-9 select-none items-center justify-center rounded-lg transition ${
               searchPanelOpen
-                ? 'bg-violet-100 text-violet-800 dark:bg-violet-950/50 dark:text-violet-200'
+                ? 'bg-zinc-200 text-zinc-800 dark:bg-zinc-800/50 dark:text-zinc-200'
                 : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100'
             }`}
             title={searchPanelOpen ? '收起搜索与标签' : '搜索与标签'}
@@ -671,7 +671,7 @@ export function Sidebar({ isOpen = false, onNavigate }: SidebarProps) {
         <button
           type="button"
           onClick={newProject}
-          className="flex w-full select-none items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-zinc-300 bg-transparent py-2.5 text-xs font-medium text-zinc-600 transition hover:border-violet-400 hover:bg-violet-50/60 hover:text-violet-800 dark:border-zinc-600 dark:text-zinc-300 dark:hover:border-violet-500 dark:hover:bg-violet-950/30 dark:hover:text-violet-200"
+          className="flex w-full select-none items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-zinc-300 bg-transparent py-2.5 text-xs font-medium text-zinc-600 transition hover:border-zinc-500 hover:bg-zinc-100/60 hover:text-zinc-800 dark:border-zinc-600 dark:text-zinc-300 dark:hover:border-zinc-500 dark:hover:bg-zinc-800/40 dark:hover:text-zinc-200"
         >
           <Plus className="h-3.5 w-3.5 shrink-0" />
           新建项目
@@ -702,7 +702,7 @@ export function Sidebar({ isOpen = false, onNavigate }: SidebarProps) {
                       <div
                         className={`rounded-lg border border-transparent ${
                           activeProjectId === proj.id
-                            ? 'bg-violet-100 dark:bg-violet-950/60'
+                            ? 'bg-zinc-200 dark:bg-zinc-800'
                             : expandedProj
                               ? 'bg-zinc-50 dark:bg-zinc-800/40'
                               : ''
@@ -755,7 +755,7 @@ export function Sidebar({ isOpen = false, onNavigate }: SidebarProps) {
                                     clearRenameState()
                                   }
                                 }}
-                                className="min-w-0 flex-1 rounded-lg bg-white px-2 py-2 text-base text-zinc-900 outline-none ring-2 ring-violet-500 dark:bg-zinc-900 dark:text-zinc-100"
+                                className="min-w-0 flex-1 rounded-lg bg-white px-2 py-2 text-base text-zinc-900 outline-none ring-2 ring-zinc-900 dark:ring-zinc-400 dark:bg-zinc-900 dark:text-zinc-100"
                                 ariaLabel="项目名称"
                               />
                             ) : (
@@ -857,7 +857,7 @@ export function Sidebar({ isOpen = false, onNavigate }: SidebarProps) {
             setSettingsOpen(true)
             onNavigate?.()
           }}
-          className="flex w-full select-none items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50/80 py-2.5 text-xs font-medium text-zinc-700 transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-800 dark:border-zinc-700 dark:bg-zinc-800/40 dark:text-zinc-200 dark:hover:border-violet-500 dark:hover:bg-violet-950/40 dark:hover:text-violet-200"
+          className="flex w-full select-none items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50/80 py-2.5 text-xs font-medium text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-100 hover:text-zinc-800 dark:border-zinc-700 dark:bg-zinc-800/40 dark:text-zinc-200 dark:hover:border-zinc-500 dark:hover:bg-zinc-800/60 dark:hover:text-zinc-200"
           title="设置"
           aria-label="打开设置"
         >

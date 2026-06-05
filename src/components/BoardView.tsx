@@ -38,7 +38,7 @@ function SummaryEditor({
           }
         }}
         minRows={2}
-        className="w-full resize-none rounded-xl border border-violet-300 bg-violet-50/80 px-2 py-1.5 text-left text-sm leading-relaxed text-zinc-800 outline-none ring-1 ring-violet-200 dark:border-violet-700 dark:bg-violet-900/30 dark:text-zinc-100 dark:ring-violet-800"
+        className="w-full resize-none rounded-xl border border-zinc-400 bg-zinc-100/80 px-2 py-1.5 text-left text-sm leading-relaxed text-zinc-800 outline-none ring-1 ring-zinc-300 dark:border-zinc-600 dark:bg-zinc-800/50 dark:text-zinc-100 dark:ring-zinc-700"
         aria-label={ariaLabel}
         autoFocus
       />
@@ -52,7 +52,7 @@ function SummaryEditor({
         setDraft(value ?? '')
         setEditing(true)
       }}
-      className="w-full rounded-xl bg-violet-50/70 px-2 py-1.5 text-left text-sm leading-relaxed text-zinc-700 transition hover:bg-violet-100 dark:bg-violet-900/20 dark:text-zinc-200 dark:hover:bg-violet-900/35"
+      className="w-full rounded-xl bg-zinc-100/70 px-2 py-1.5 text-left text-sm leading-relaxed text-zinc-700 transition hover:bg-zinc-200 dark:bg-zinc-800/30 dark:text-zinc-200 dark:hover:bg-zinc-800/60"
       aria-label={ariaLabel}
       title="点击编辑提要，Cmd/Ctrl + Enter 保存"
     >
@@ -117,7 +117,7 @@ function SortableBlockCard({
       ref={setNodeRef}
       style={style}
       className={`group relative flex flex-col rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm dark:border-zinc-700 dark:bg-zinc-900 ${
-        isDragging ? 'z-10 ring-2 ring-violet-500/40' : ''
+        isDragging ? 'z-10 ring-2 ring-zinc-500/50' : ''
       }`}
     >
       <div className="mb-2 flex select-none items-center justify-between gap-2">
@@ -183,7 +183,7 @@ function SortableBlockCard({
             }
           }}
           minRows={2}
-          className="w-full resize-none rounded-xl border border-violet-300 bg-violet-50/80 px-2 py-1.5 text-left text-sm leading-relaxed text-zinc-800 outline-none ring-1 ring-violet-200 dark:border-violet-700 dark:bg-violet-900/30 dark:text-zinc-100 dark:ring-violet-800"
+          className="w-full resize-none rounded-xl border border-zinc-400 bg-zinc-100/80 px-2 py-1.5 text-left text-sm leading-relaxed text-zinc-800 outline-none ring-1 ring-zinc-300 dark:border-zinc-600 dark:bg-zinc-800/50 dark:text-zinc-100 dark:ring-zinc-700"
           aria-label="编辑卡片提要"
           autoFocus
         />
@@ -309,7 +309,7 @@ function SortableChatCard({
       ref={setNodeRef}
       style={style}
       className={`group rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm dark:border-zinc-700 dark:bg-zinc-900 ${
-        isDragging ? 'z-10 ring-2 ring-violet-500/40' : ''
+        isDragging ? 'z-10 ring-2 ring-zinc-500/50' : ''
       }`}
     >
       <div className="mb-2 flex items-center justify-between gap-2">

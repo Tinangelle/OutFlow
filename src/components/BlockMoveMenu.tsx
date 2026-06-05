@@ -48,7 +48,7 @@ export function BlockMoveMenu({
                     type="button"
                     onClick={() => moveTo(chat.id)}
                     disabled={chat.id === currentChatId}
-                    className="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-xs text-zinc-700 transition hover:bg-violet-50 hover:text-violet-800 disabled:cursor-not-allowed disabled:opacity-50 dark:text-zinc-200 dark:hover:bg-violet-950/40 dark:hover:text-violet-200"
+                    className="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-xs text-zinc-700 transition hover:bg-zinc-100 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-50 dark:text-zinc-200 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
                   >
                     <MessageSquare className="h-3.5 w-3.5" />
                     {chat.title}
@@ -70,7 +70,7 @@ export function BlockMoveMenu({
                   type="button"
                   onClick={() => moveTo(chat.id)}
                   disabled={chat.id === currentChatId}
-                  className="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-xs text-zinc-700 transition hover:bg-violet-50 hover:text-violet-800 disabled:cursor-not-allowed disabled:opacity-50 dark:text-zinc-200 dark:hover:bg-violet-950/40 dark:hover:text-violet-200"
+                  className="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-xs text-zinc-700 transition hover:bg-zinc-100 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-50 dark:text-zinc-200 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
                 >
                   <MessageSquare className="h-3.5 w-3.5" />
                   {chat.title}

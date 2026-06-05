@@ -78,7 +78,7 @@ export function BlockBubble({
             onStartEdit(block.id)
           }
         }}
-        className="touch-callout-default cursor-pointer select-text rounded-2xl border border-zinc-200 bg-white px-4 py-3 pr-12 text-left shadow-sm outline-none transition hover:border-zinc-300 hover:bg-zinc-50 focus-visible:ring-2 focus-visible:ring-violet-500 dark:border-zinc-700 dark:bg-zinc-900/80 dark:hover:border-zinc-600 dark:hover:bg-zinc-900"
+        className="touch-callout-default cursor-pointer select-text rounded-2xl border border-zinc-200 bg-white px-4 py-3 pr-12 text-left shadow-sm outline-none transition hover:border-zinc-300 hover:bg-zinc-50 focus-visible:ring-2 focus-visible:ring-zinc-500 dark:focus-visible:ring-zinc-400 dark:border-zinc-700 dark:bg-zinc-900/80 dark:hover:border-zinc-600 dark:hover:bg-zinc-900"
       >
         <div
           ref={contentRef}
@@ -95,7 +95,7 @@ export function BlockBubble({
               e.stopPropagation()
               setCollapsed((v) => !v)
             }}
-            className="mt-1 text-xs text-zinc-500 hover:text-violet-600 dark:text-zinc-400 dark:hover:text-violet-400"
+            className="mt-1 text-xs text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
           >
             {collapsed ? '展开' : '收起'}
           </button>

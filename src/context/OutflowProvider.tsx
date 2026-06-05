@@ -136,7 +136,11 @@ export function OutflowProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!hydrated) return
     void savePersisted(state)
-    document.documentElement.classList.toggle('dark', state.theme === 'dark')
+    const isDark = state.theme === 'dark'
+    document.documentElement.classList.toggle('dark', isDark)
+    document
+      .querySelector('meta[name="theme-color"]')
+      ?.setAttribute('content', isDark ? '#09090b' : '#fafafa')
   }, [state, hydrated])
 
   const activeProjectIdResolved = useMemo(() => {

@@ -16,7 +16,7 @@ const mdLink = ({
     href={href}
     target="_blank"
     rel="noreferrer"
-    className="text-violet-600 underline dark:text-violet-400"
+    className="text-zinc-700 underline dark:text-zinc-300"
     onClick={(e) => e.stopPropagation()}
     onKeyDown={(e) => e.stopPropagation()}
   >

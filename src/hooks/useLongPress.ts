@@ -1,4 +1,9 @@
-import { useCallback, useRef, type PointerEvent as ReactPointerEvent } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  type PointerEvent as ReactPointerEvent,
+} from 'react'
 
 const DEFAULT_MS = 480
 
@@ -8,6 +13,8 @@ type UseLongPressOptions = {
   ms?: number
   /** 仅触摸指针触发长按，避免误伤鼠标拖拽 */
   touchOnly?: boolean
+  /** 为 true 时取消尚未触发的长按（例如拖拽已开始） */
+  abortExternal?: boolean
   onLongPress: () => void
 }
 
@@ -18,6 +25,7 @@ export function useLongPress({
   enabled,
   ms = DEFAULT_MS,
   touchOnly = true,
+  abortExternal = false,
   onLongPress,
 }: UseLongPressOptions) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -53,6 +61,12 @@ export function useLongPress({
   const onPointerEnd = useCallback(() => {
     clearTimer()
   }, [clearTimer])
+
+  useEffect(() => {
+    if (!abortExternal) return
+    clearTimer()
+    suppressClickRef.current = false
+  }, [abortExternal, clearTimer])
 
   const consumeClick = useCallback(() => {
     if (suppressClickRef.current) {

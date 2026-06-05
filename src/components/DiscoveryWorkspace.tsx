@@ -75,7 +75,7 @@ export function DiscoveryWorkspace() {
       <div className="mx-auto max-w-3xl space-y-4">
         <div className="flex flex-wrap select-none items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400">
-            <Hash className="h-4 w-4 text-violet-600 dark:text-violet-400" />
+            <Hash className="h-4 w-4 text-zinc-700 dark:text-zinc-300" />
             <span>
               标签「
               <span className="font-semibold text-zinc-900 dark:text-zinc-100">
@@ -121,7 +121,7 @@ export function DiscoveryWorkspace() {
                   <button
                     type="button"
                     onClick={() => openInChat(b.chatId)}
-                    className="w-full rounded-2xl border border-zinc-200 bg-white p-4 text-left shadow-sm transition hover:border-violet-300 hover:shadow-md dark:border-zinc-700 dark:bg-zinc-900 dark:hover:border-violet-600"
+                    className="w-full rounded-2xl border border-zinc-200 bg-white p-4 text-left shadow-sm transition hover:border-zinc-400 hover:shadow-md dark:border-zinc-700 dark:bg-zinc-900 dark:hover:border-zinc-500"
                   >
                     <div className="flex flex-wrap select-none items-center gap-x-2 gap-y-1 text-xs text-zinc-500 dark:text-zinc-400">
                       <span className="rounded-md bg-zinc-100 px-2 py-0.5 font-medium text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
@@ -180,7 +180,7 @@ export function DiscoveryWorkspace() {
                 <button
                   type="button"
                   onClick={() => openInChat(b.chatId)}
-                  className="w-full rounded-2xl border border-zinc-200 bg-white p-4 text-left shadow-sm transition hover:border-violet-300 hover:shadow-md dark:border-zinc-700 dark:bg-zinc-900 dark:hover:border-violet-600"
+                  className="w-full rounded-2xl border border-zinc-200 bg-white p-4 text-left shadow-sm transition hover:border-zinc-400 hover:shadow-md dark:border-zinc-700 dark:bg-zinc-900 dark:hover:border-zinc-500"
                 >
                   <div className="flex flex-wrap select-none items-center gap-x-2 gap-y-1 text-xs text-zinc-500 dark:text-zinc-400">
                     <span className="rounded-md bg-zinc-100 px-2 py-0.5 font-medium text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">

@@ -8,7 +8,7 @@ import {
 import type { Block } from '../types/outflow'
 
 const bubbleShellClass =
-  'rounded-2xl border border-violet-300 bg-white p-3 shadow-sm dark:border-violet-600 dark:bg-zinc-900'
+  'rounded-2xl border border-zinc-400 bg-white p-3 shadow-sm dark:border-zinc-600 dark:bg-zinc-900'
 
 export function BlockEditForm({
   block,
@@ -58,7 +58,7 @@ export function BlockEditForm({
 
   // 与 @tailwindcss/typography 的 prose / prose-sm 正文行高一致，避免从 Markdown 只读切到纯文本时「字突然变大/行变疏」
   const docTextareaClass = [
-    'not-prose max-h-none w-full min-h-0 resize-none overflow-hidden border-0 bg-transparent p-0 text-left text-zinc-800 shadow-none outline-none ring-0 selection:bg-violet-200/80 focus:outline-none focus:ring-0 dark:text-zinc-100 dark:selection:bg-violet-900/50',
+    'not-prose max-h-none w-full min-h-0 resize-none overflow-hidden border-0 bg-transparent p-0 text-left text-zinc-800 shadow-none outline-none ring-0 selection:bg-zinc-300/80 focus:outline-none focus:ring-0 dark:text-zinc-100 dark:selection:bg-zinc-600/50',
     isIOSLike ? 'text-base leading-7' : 'text-sm leading-[1.7142857]',
   ].join(' ')
 

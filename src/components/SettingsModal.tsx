@@ -1,4 +1,4 @@
-import { CloudDownload, CloudUpload, Download, Link2, Upload, X } from 'lucide-react'
+import { CloudDownload, CloudUpload, Download, Link2, Moon, Sun, Upload, X } from 'lucide-react'
 import {
   useCallback,
   useEffect,
@@ -19,6 +19,7 @@ import {
   isGoogleDriveAuthorized,
   uploadBackupToGoogleDrive,
 } from '../lib/googleDrive'
+import { useOutflow } from '../hooks/useOutflow'
 
 const IMPORT_CONFIRM =
   '导入将彻底覆盖当前所有数据。确定要继续吗？'
@@ -26,6 +27,8 @@ const CLOUD_RESTORE_CONFIRM =
   '从云端恢复会覆盖当前本地所有数据并立即刷新页面。确定继续吗？'
 
 export function SettingsModal({ onClose }: { onClose: () => void }) {
+  const { theme, setTheme } = useOutflow()
+  const isDark = theme === 'dark'
   const fileRef = useRef<HTMLInputElement>(null)
   const [exporting, setExporting] = useState(false)
   const [importing, setImporting] = useState(false)
@@ -181,6 +184,27 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
 
         <section className="mt-6 border-t border-zinc-100 pt-5 dark:border-zinc-800">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
+            外观
+          </h3>
+          <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+            在浅色与深色界面之间切换，偏好会保存在本机。
+          </p>
+          <button
+            type="button"
+            onClick={() => setTheme(isDark ? 'light' : 'dark')}
+            className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 py-3 text-sm font-medium text-zinc-800 transition hover:border-zinc-400 hover:bg-zinc-100 disabled:opacity-60 dark:border-zinc-600 dark:bg-zinc-800/50 dark:text-zinc-100 dark:hover:border-zinc-500 dark:hover:bg-zinc-800"
+          >
+            {isDark ? (
+              <Sun className="h-4 w-4 shrink-0" />
+            ) : (
+              <Moon className="h-4 w-4 shrink-0" />
+            )}
+            {isDark ? '切换为浅色模式' : '切换为深色模式'}
+          </button>
+        </section>
+
+        <section className="mt-6 border-t border-zinc-100 pt-5 dark:border-zinc-800">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
             备份与同步
           </h3>
           <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
@@ -191,7 +215,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
               type="button"
               disabled={exporting}
               onClick={() => void handleExport()}
-              className="flex w-full items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 py-3 text-sm font-medium text-zinc-800 transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-900 disabled:opacity-60 dark:border-zinc-600 dark:bg-zinc-800/50 dark:text-zinc-100 dark:hover:border-violet-500 dark:hover:bg-violet-950/40 dark:hover:text-violet-100"
+              className="flex w-full items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 py-3 text-sm font-medium text-zinc-800 transition hover:border-zinc-400 hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-60 dark:border-zinc-600 dark:bg-zinc-800/50 dark:text-zinc-100 dark:hover:border-zinc-500 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
             >
               <Download className="h-4 w-4 shrink-0" />
               {exporting ? '正在导出…' : '导出本地备份'}
@@ -224,7 +248,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                   type="button"
                   disabled={connectingDrive}
                   onClick={() => void handleConnectDrive()}
-                  className="inline-flex items-center gap-2 rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-900 disabled:opacity-60 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:border-violet-500 dark:hover:bg-violet-950/40 dark:hover:text-violet-100"
+                  className="inline-flex items-center gap-2 rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-60 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:border-zinc-500 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
                 >
                   <Link2 className="h-3.5 w-3.5" />
                   {connectingDrive ? '连接中…' : '连接 Google Drive'}
@@ -237,7 +261,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                   type="button"
                   disabled={cloudUploading || cloudRestoring}
                   onClick={() => void handleCloudUpload()}
-                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-xs font-medium text-zinc-700 transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-900 disabled:opacity-60 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:border-violet-500 dark:hover:bg-violet-950/40 dark:hover:text-violet-100"
+                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-xs font-medium text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-60 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:border-zinc-500 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
                 >
                   <CloudUpload className="h-3.5 w-3.5" />
                   {cloudUploading ? '上传中…' : '覆盖到云端'}

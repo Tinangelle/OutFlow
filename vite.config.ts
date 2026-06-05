@@ -20,8 +20,8 @@ export default defineConfig({
         start_url: '/OutFlow/',
         scope: '/OutFlow/',
         display: 'standalone',
-        theme_color: '#ffffff',
-        background_color: '#ffffff',
+        theme_color: '#fafafa',
+        background_color: '#fafafa',
         icons: [
           {
             src: 'icon-192.png?v=20260422',
