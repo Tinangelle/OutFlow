@@ -1,4 +1,5 @@
 import localforage from 'localforage'
+import { resetSyncMetaAfterImport } from './syncMeta'
 import { STORAGE_KEY, tryParsePersistedState } from './storage'
 
 export const OUTFLOW_BACKUP_FORMAT = 1 as const
@@ -106,5 +107,9 @@ export async function clearAndRestoreLocalforage(
   await localforage.clear()
   for (const [key, value] of Object.entries(entries)) {
     await localforage.setItem(key, value)
+  }
+  const restored = tryParsePersistedState(entries[STORAGE_KEY])
+  if (restored) {
+    await resetSyncMetaAfterImport(restored)
   }
 }

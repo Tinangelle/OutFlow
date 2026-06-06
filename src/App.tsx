@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ChatView } from './components/ChatView'
 import { GlobalDndLayout } from './components/GlobalDndLayout'
 import { Sidebar } from './components/Sidebar'
+import { AuthProvider } from './context/AuthProvider'
 import { OutflowProvider } from './context/OutflowProvider'
 
 function AppShell() {
@@ -33,9 +34,11 @@ function AppShell() {
 export default function App() {
   return (
     <div className="flex h-[100dvh] min-h-0 flex-col overflow-hidden">
-      <OutflowProvider>
-        <AppShell />
-      </OutflowProvider>
+      <AuthProvider>
+        <OutflowProvider>
+          <AppShell />
+        </OutflowProvider>
+      </AuthProvider>
     </div>
   )
 }

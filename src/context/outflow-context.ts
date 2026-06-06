@@ -2,6 +2,13 @@ import { createContext } from 'react'
 import type { ThemeMode } from '../lib/storage'
 import type { Block, Chat, Project } from '../types/outflow'
 
+export type CloudSyncStatus =
+  | 'disabled'
+  | 'pending'
+  | 'syncing'
+  | 'synced'
+  | 'error'
+
 export interface OutflowContextValue {
   /** 未删除且可用的项目（侧栏「项目」） */
   projects: Project[]
@@ -68,6 +75,9 @@ export interface OutflowContextValue {
   permanentDeleteChat: (id: string) => void
   permanentDeleteBlock: (id: string) => void
   emptyTrash: () => void
+
+  cloudSyncStatus: CloudSyncStatus
+  cloudSyncError: string | null
 }
 
 export const OutflowContext = createContext<OutflowContextValue | null>(null)

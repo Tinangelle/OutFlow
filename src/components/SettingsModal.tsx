@@ -1,4 +1,13 @@
-import { CloudDownload, CloudUpload, Download, Link2, Moon, Sun, Upload, X } from 'lucide-react'
+import {
+  CloudDownload,
+  CloudUpload,
+  Download,
+  Link2,
+  LogOut,
+  Mail,
+  Upload,
+  X,
+} from 'lucide-react'
 import {
   useCallback,
   useEffect,
@@ -19,16 +28,46 @@ import {
   isGoogleDriveAuthorized,
   uploadBackupToGoogleDrive,
 } from '../lib/googleDrive'
+import {
+  fetchCloudWorkspace,
+  uploadLocalWorkspaceToCloud,
+} from '../lib/cloudSync'
+import { STORAGE_KEY } from '../lib/storage'
+import { useAuth } from '../hooks/useAuth'
 import { useOutflow } from '../hooks/useOutflow'
+import type { CloudSyncStatus } from '../context/outflow-context'
+
+function cloudSyncStatusLabel(status: CloudSyncStatus): string {
+  switch (status) {
+    case 'disabled':
+      return '未启用（未登录）'
+    case 'pending':
+      return '等待同步…'
+    case 'syncing':
+      return '同步中…'
+    case 'synced':
+      return '已同步'
+    case 'error':
+      return '同步失败'
+  }
+}
 
 const IMPORT_CONFIRM =
   '导入将彻底覆盖当前所有数据。确定要继续吗？'
 const CLOUD_RESTORE_CONFIRM =
   '从云端恢复会覆盖当前本地所有数据并立即刷新页面。确定继续吗？'
+const SUPABASE_RESTORE_CONFIRM =
+  '从 Supabase 云端恢复会覆盖当前本地所有数据并立即刷新页面。确定继续吗？'
 
 export function SettingsModal({ onClose }: { onClose: () => void }) {
-  const { theme, setTheme } = useOutflow()
-  const isDark = theme === 'dark'
+  const {
+    configured: supabaseConfigured,
+    loading: authLoading,
+    user,
+    signInWithEmail,
+    signOut,
+  } = useAuth()
+  const { cloudSyncStatus, cloudSyncError } = useOutflow()
   const fileRef = useRef<HTMLInputElement>(null)
   const [exporting, setExporting] = useState(false)
   const [importing, setImporting] = useState(false)
@@ -36,6 +75,11 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const [cloudUploading, setCloudUploading] = useState(false)
   const [cloudRestoring, setCloudRestoring] = useState(false)
   const [driveConnected, setDriveConnected] = useState(isGoogleDriveAuthorized())
+  const [loginEmail, setLoginEmail] = useState('')
+  const [sendingMagicLink, setSendingMagicLink] = useState(false)
+  const [signingOut, setSigningOut] = useState(false)
+  const [supabaseUploading, setSupabaseUploading] = useState(false)
+  const [supabaseRestoring, setSupabaseRestoring] = useState(false)
 
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
@@ -120,6 +164,67 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     }
   }, [])
 
+  const handleSendMagicLink = useCallback(async () => {
+    setSendingMagicLink(true)
+    try {
+      await signInWithEmail(loginEmail)
+      window.alert('登录链接已发送，请查收邮件并点击链接完成登录。')
+      setLoginEmail('')
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '发送登录链接失败。'
+      window.alert(message)
+    } finally {
+      setSendingMagicLink(false)
+    }
+  }, [loginEmail, signInWithEmail])
+
+  const handleSignOut = useCallback(async () => {
+    setSigningOut(true)
+    try {
+      await signOut()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '退出登录失败。'
+      window.alert(message)
+    } finally {
+      setSigningOut(false)
+    }
+  }, [signOut])
+
+  const handleSupabaseUpload = useCallback(async () => {
+    setSupabaseUploading(true)
+    try {
+      await uploadLocalWorkspaceToCloud()
+      window.alert('已上传到 Supabase 云端。')
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '上传到 Supabase 失败。'
+      window.alert(message)
+    } finally {
+      setSupabaseUploading(false)
+    }
+  }, [])
+
+  const handleSupabaseRestore = useCallback(async () => {
+    if (!window.confirm(SUPABASE_RESTORE_CONFIRM)) return
+    setSupabaseRestoring(true)
+    try {
+      const remote = await fetchCloudWorkspace()
+      if (!remote) {
+        window.alert('云端尚无备份，请先执行一次上传到云端。')
+        return
+      }
+      await clearAndRestoreLocalforage({
+        [STORAGE_KEY]: remote.state,
+      })
+      window.location.reload()
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : '从 Supabase 云端恢复失败。'
+      window.alert(message)
+    } finally {
+      setSupabaseRestoring(false)
+    }
+  }, [])
+
   const handleCloudRestore = useCallback(async () => {
     if (!window.confirm(CLOUD_RESTORE_CONFIRM)) return
     setCloudRestoring(true)
@@ -182,30 +287,97 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        <section className="mt-6 border-t border-zinc-100 pt-5 dark:border-zinc-800">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
-            外观
-          </h3>
-          <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-            在浅色与深色界面之间切换，偏好会保存在本机。
-          </p>
-          <button
-            type="button"
-            onClick={() => setTheme(isDark ? 'light' : 'dark')}
-            className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 py-3 text-sm font-medium text-zinc-800 transition hover:border-zinc-400 hover:bg-zinc-100 disabled:opacity-60 dark:border-zinc-600 dark:bg-zinc-800/50 dark:text-zinc-100 dark:hover:border-zinc-500 dark:hover:bg-zinc-800"
-          >
-            {isDark ? (
-              <Sun className="h-4 w-4 shrink-0" />
+        {supabaseConfigured ? (
+          <section className="mt-6 border-t border-zinc-100 pt-5 dark:border-zinc-800">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
+              账号与云端
+            </h3>
+            {authLoading ? (
+              <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
+                正在检查登录状态…
+              </p>
+            ) : user ? (
+              <div className="mt-3 space-y-3">
+                <p className="text-sm text-zinc-600 dark:text-zinc-300">
+                  已登录：{user.email ?? '（无邮箱）'}
+                </p>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                  自动同步：{cloudSyncStatusLabel(cloudSyncStatus)}
+                  {cloudSyncError ? `（${cloudSyncError}）` : null}
+                </p>
+                <button
+                  type="button"
+                  disabled={signingOut}
+                  onClick={() => void handleSignOut()}
+                  className="inline-flex items-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-60 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:border-zinc-500 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+                >
+                  <LogOut className="h-4 w-4" />
+                  {signingOut ? '退出中…' : '退出登录'}
+                </button>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    disabled={supabaseUploading || supabaseRestoring}
+                    onClick={() => void handleSupabaseUpload()}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-xs font-medium text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-60 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:border-zinc-500 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+                  >
+                    <CloudUpload className="h-3.5 w-3.5" />
+                    {supabaseUploading ? '上传中…' : '上传到云端'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={supabaseRestoring || supabaseUploading}
+                    onClick={() => void handleSupabaseRestore()}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-xs font-medium text-zinc-700 transition hover:border-amber-300 hover:bg-amber-50 hover:text-amber-900 disabled:opacity-60 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:border-amber-600 dark:hover:bg-amber-950/30 dark:hover:text-amber-100"
+                  >
+                    <CloudDownload className="h-3.5 w-3.5" />
+                    {supabaseRestoring ? '恢复中…' : '从云端恢复'}
+                  </button>
+                </div>
+              </div>
             ) : (
-              <Moon className="h-4 w-4 shrink-0" />
+              <div className="mt-3 space-y-3">
+                <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                  使用邮箱 Magic Link 登录，登录状态会自动保持。
+                </p>
+                <label className="block">
+                  <span className="sr-only">邮箱</span>
+                  <input
+                    type="email"
+                    value={loginEmail}
+                    onChange={(e) => setLoginEmail(e.target.value)}
+                    placeholder="your@email.com"
+                    autoComplete="email"
+                    className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2.5 text-sm text-zinc-900 outline-none ring-0 transition placeholder:text-zinc-400 focus:border-zinc-400 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-500 dark:focus:border-zinc-500"
+                  />
+                </label>
+                <button
+                  type="button"
+                  disabled={sendingMagicLink || !loginEmail.trim()}
+                  onClick={() => void handleSendMagicLink()}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 py-3 text-sm font-medium text-zinc-800 transition hover:border-zinc-400 hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-60 dark:border-zinc-600 dark:bg-zinc-800/50 dark:text-zinc-100 dark:hover:border-zinc-500 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+                >
+                  <Mail className="h-4 w-4 shrink-0" />
+                  {sendingMagicLink ? '发送中…' : '发送登录链接'}
+                </button>
+              </div>
             )}
-            {isDark ? '切换为浅色模式' : '切换为深色模式'}
-          </button>
-        </section>
+          </section>
+        ) : (
+          <section className="mt-6 border-t border-zinc-100 pt-5 dark:border-zinc-800">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
+              账号与云端
+            </h3>
+            <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
+              未配置 Supabase。请在 .env 中设置 VITE_SUPABASE_URL 与
+              VITE_SUPABASE_ANON_KEY。
+            </p>
+          </section>
+        )}
 
         <section className="mt-6 border-t border-zinc-100 pt-5 dark:border-zinc-800">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
-            备份与同步
+            本地备份
           </h3>
           <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
             导出或导入本地 IndexedDB 中的全量工作区数据（项目、对话、内容块，含回收站中的条目）。

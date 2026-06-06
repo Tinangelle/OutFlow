@@ -3,9 +3,15 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react'
+import {
+  pushWorkspaceIfNeeded,
+  pushWorkspaceState,
+  resolveWorkspaceSync,
+} from '../lib/cloudSync'
 import { createBlock, createChat, createProject } from '../lib/factory'
 import {
   loadPersisted,
@@ -14,6 +20,7 @@ import {
   type PersistedState,
   type ThemeMode,
 } from '../lib/storage'
+import { bumpLocalRevision, saveSyncMeta } from '../lib/syncMeta'
 import { extractTagsFromContent } from '../lib/tags'
 import {
   blockVisible,
@@ -22,7 +29,14 @@ import {
   filterVisibleProjects,
   isTrashed,
 } from '../lib/trash'
-import { OutflowContext, type OutflowContextValue } from './outflow-context'
+import { useAuth } from '../hooks/useAuth'
+import {
+  OutflowContext,
+  type CloudSyncStatus,
+  type OutflowContextValue,
+} from './outflow-context'
+
+const AUTO_SYNC_DEBOUNCE_MS = 2500
 
 function systemTheme(): ThemeMode {
   return window.matchMedia('(prefers-color-scheme: dark)').matches
@@ -91,9 +105,20 @@ function OutflowBootLoading() {
   )
 }
 
+function syncErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : '云端同步失败。'
+}
+
 export function OutflowProvider({ children }: { children: ReactNode }) {
+  const { user, loading: authLoading, configured: supabaseConfigured } =
+    useAuth()
+  const cloudSyncEnabled = supabaseConfigured && Boolean(user)
   const [initError, setInitError] = useState<string | null>(null)
   const [hydrated, setHydrated] = useState(false)
+  const [cloudSyncStatus, setCloudSyncStatus] = useState<CloudSyncStatus>(
+    cloudSyncEnabled ? 'pending' : 'disabled',
+  )
+  const [cloudSyncError, setCloudSyncError] = useState<string | null>(null)
   /** 在 hydrated 之前为占位数据，不渲染子树，加载完成后由磁盘数据整体替换 */
   const [state, setState] = useState<PersistedState>(() =>
     buildInitialState(null),
@@ -102,6 +127,9 @@ export function OutflowProvider({ children }: { children: ReactNode }) {
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null)
   const [globalSearchQuery, setGlobalSearchQueryRaw] = useState('')
   const [activeTagFilter, setActiveTagFilter] = useState<string | null>(null)
+  const bootUserRef = useRef<string | undefined>(undefined)
+  const initialBootDoneRef = useRef(false)
+  const skipRevisionBumpRef = useRef(false)
 
   const setGlobalSearchQuery = useCallback((q: string) => {
     setActiveTagFilter(null)
@@ -120,28 +148,155 @@ export function OutflowProvider({ children }: { children: ReactNode }) {
   }, [])
 
   useEffect(() => {
+    if (authLoading || initialBootDoneRef.current) return
+    initialBootDoneRef.current = true
+
     let cancelled = false
     void (async () => {
       const { data: loaded, error: loadErr } = await loadPersisted()
       if (cancelled) return
       if (loadErr) setInitError(loadErr)
-      setState(buildInitialState(loaded))
+
+      let merged = loaded
+      let shouldPush = false
+
+      if (cloudSyncEnabled) {
+        try {
+          setCloudSyncStatus('syncing')
+          const result = await resolveWorkspaceSync(loaded)
+          merged = result.state
+          shouldPush = result.shouldPush
+          skipRevisionBumpRef.current = result.source === 'cloud'
+          await saveSyncMeta(result.syncMeta)
+          setCloudSyncError(null)
+          setCloudSyncStatus('synced')
+        } catch (err) {
+          setCloudSyncError(syncErrorMessage(err))
+          setCloudSyncStatus('error')
+        }
+      } else {
+        setCloudSyncStatus('disabled')
+      }
+
+      const nextState = buildInitialState(merged)
+      if (cancelled) return
+
+      if (shouldPush && cloudSyncEnabled) {
+        try {
+          setCloudSyncStatus('syncing')
+          await pushWorkspaceState(nextState)
+          skipRevisionBumpRef.current = true
+          setCloudSyncError(null)
+          setCloudSyncStatus('synced')
+        } catch (err) {
+          setCloudSyncError(syncErrorMessage(err))
+          setCloudSyncStatus('error')
+        }
+      }
+
+      setState(nextState)
       setHydrated(true)
+      bootUserRef.current = user?.id
     })()
+
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [authLoading, cloudSyncEnabled, user?.id]) // cloudSyncEnabled/user 仅用于首次启动时的快照
+
+  useEffect(() => {
+    if (!hydrated || authLoading || !supabaseConfigured) return
+
+    const uid = user?.id
+    if (uid === bootUserRef.current) return
+
+    bootUserRef.current = uid
+    if (!uid) {
+      setCloudSyncStatus('disabled')
+      setCloudSyncError(null)
+      return
+    }
+
+    let cancelled = false
+    void (async () => {
+      try {
+        setCloudSyncStatus('syncing')
+        const { data: local } = await loadPersisted()
+        const result = await resolveWorkspaceSync(local)
+        if (cancelled) return
+
+        skipRevisionBumpRef.current = result.source === 'cloud'
+        await saveSyncMeta(result.syncMeta)
+
+        const nextState = buildInitialState(result.state)
+
+        if (result.shouldPush) {
+          await pushWorkspaceState(nextState)
+          skipRevisionBumpRef.current = true
+        }
+
+        setState(nextState)
+
+        if (cancelled) return
+        setCloudSyncError(null)
+        setCloudSyncStatus('synced')
+      } catch (err) {
+        if (cancelled) return
+        setCloudSyncError(syncErrorMessage(err))
+        setCloudSyncStatus('error')
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [hydrated, authLoading, supabaseConfigured, user?.id])
 
   useEffect(() => {
     if (!hydrated) return
-    void savePersisted(state)
+    void (async () => {
+      await savePersisted(state)
+      if (!skipRevisionBumpRef.current) {
+        await bumpLocalRevision()
+      } else {
+        skipRevisionBumpRef.current = false
+      }
+    })()
     const isDark = state.theme === 'dark'
     document.documentElement.classList.toggle('dark', isDark)
     document
       .querySelector('meta[name="theme-color"]')
       ?.setAttribute('content', isDark ? '#09090b' : '#fafafa')
   }, [state, hydrated])
+
+  useEffect(() => {
+    if (!hydrated || !cloudSyncEnabled) {
+      if (!cloudSyncEnabled) {
+        setCloudSyncStatus('disabled')
+      }
+      return
+    }
+
+    setCloudSyncStatus((prev) => (prev === 'syncing' ? prev : 'pending'))
+
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        setCloudSyncStatus('syncing')
+        try {
+          await pushWorkspaceIfNeeded(state)
+          setCloudSyncError(null)
+          setCloudSyncStatus('synced')
+        } catch (err) {
+          setCloudSyncError(syncErrorMessage(err))
+          setCloudSyncStatus('error')
+        }
+      })()
+    }, AUTO_SYNC_DEBOUNCE_MS)
+
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [state, hydrated, cloudSyncEnabled])
 
   const activeProjectIdResolved = useMemo(() => {
     if (!activeProjectId) return null
@@ -714,6 +869,8 @@ export function OutflowProvider({ children }: { children: ReactNode }) {
       permanentDeleteChat,
       permanentDeleteBlock,
       emptyTrash,
+      cloudSyncStatus,
+      cloudSyncError,
     }),
     [
       projectsVisible,
@@ -763,6 +920,8 @@ export function OutflowProvider({ children }: { children: ReactNode }) {
       permanentDeleteChat,
       permanentDeleteBlock,
       emptyTrash,
+      cloudSyncStatus,
+      cloudSyncError,
     ],
   )
 
