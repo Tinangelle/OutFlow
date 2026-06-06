@@ -257,7 +257,7 @@ export function OutflowProvider({ children }: { children: ReactNode }) {
     void (async () => {
       await savePersisted(state)
       if (!skipRevisionBumpRef.current) {
-        await bumpLocalRevision()
+        await bumpLocalRevision(state)
       } else {
         skipRevisionBumpRef.current = false
       }

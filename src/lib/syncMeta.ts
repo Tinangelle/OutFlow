@@ -48,9 +48,12 @@ export async function saveSyncMeta(meta: SyncMeta): Promise<void> {
   await localforage.setItem(SYNC_META_KEY, meta)
 }
 
-export async function bumpLocalRevision(): Promise<SyncMeta> {
+export async function bumpLocalRevision(state: PersistedState): Promise<SyncMeta> {
   const meta = await loadSyncMeta()
-  const next: SyncMeta = { ...meta, localRevision: Date.now() }
+  const contentRev = computeStateRevision(state)
+  const nextRevision = Math.max(meta.localRevision, contentRev)
+  if (nextRevision === meta.localRevision) return meta
+  const next: SyncMeta = { ...meta, localRevision: nextRevision }
   await saveSyncMeta(next)
   return next
 }

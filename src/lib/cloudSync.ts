@@ -9,6 +9,10 @@ import {
   type SyncMeta,
 } from './syncMeta'
 import { STORAGE_KEY, tryParsePersistedState, type PersistedState } from './storage'
+import {
+  isSubstantiveWorkspace,
+  isTrivialWorkspace,
+} from './workspaceHeuristics'
 
 type WorkspaceRow = {
   payload: unknown
@@ -58,6 +62,41 @@ export function mergeLocalAndCloud(
   cloud: { state: PersistedState; updatedAt: string } | null,
 ): MergeResult {
   const cloudRevision = cloud ? new Date(cloud.updatedAt).getTime() : 0
+  const localIsTrivial = !local || isTrivialWorkspace(local)
+  const cloudIsSubstantive =
+    cloud !== null && isSubstantiveWorkspace(cloud.state)
+  const localIsSubstantive =
+    local !== null && isSubstantiveWorkspace(local)
+
+  // 新设备/空壳本地绝不允许覆盖有内容的云端
+  if (cloud && localIsTrivial && cloudIsSubstantive) {
+    return {
+      state: cloud.state,
+      shouldPush: false,
+      syncMeta: {
+        localRevision: cloudRevision,
+        lastPushedRevision: cloudRevision,
+      },
+      source: 'cloud',
+    }
+  }
+
+  // 云端为空壳、本地有内容时优先本地
+  if (
+    local &&
+    localIsSubstantive &&
+    cloud &&
+    isTrivialWorkspace(cloud.state)
+  ) {
+    const revision =
+      localRevision > 0 ? localRevision : computeStateRevision(local)
+    return {
+      state: local,
+      shouldPush: true,
+      syncMeta: { localRevision: revision, lastPushedRevision: null },
+      source: 'local',
+    }
+  }
 
   if (!cloud) {
     const revision =
@@ -157,6 +196,13 @@ export async function uploadWorkspaceToCloud(state: PersistedState): Promise<voi
 }
 
 export async function pushWorkspaceIfNeeded(state: PersistedState): Promise<boolean> {
+  if (isTrivialWorkspace(state)) {
+    const cloud = await fetchCloudWorkspace()
+    if (cloud && isSubstantiveWorkspace(cloud.state)) {
+      return false
+    }
+  }
+
   const meta = await loadSyncMeta()
   if (
     meta.lastPushedRevision !== null &&
@@ -171,10 +217,17 @@ export async function pushWorkspaceIfNeeded(state: PersistedState): Promise<bool
 }
 
 export async function pushWorkspaceState(state: PersistedState): Promise<void> {
+  if (isTrivialWorkspace(state)) {
+    const cloud = await fetchCloudWorkspace()
+    if (cloud && isSubstantiveWorkspace(cloud.state)) {
+      throw new Error('本地工作区为空，已阻止上传以免覆盖云端数据。')
+    }
+  }
+
   await uploadWorkspaceToCloud(state)
   let meta = await loadSyncMeta()
   if (meta.localRevision <= 0) {
-    meta = await bumpLocalRevision()
+    meta = await bumpLocalRevision(state)
   }
   await markPushed(meta.localRevision)
 }
