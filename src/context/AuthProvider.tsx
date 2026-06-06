@@ -7,6 +7,7 @@ import {
 } from 'react'
 import type { Session, User } from '@supabase/supabase-js'
 import { AuthContext, type AuthContextValue } from './auth-context'
+import { getAppBaseUrl } from '../lib/appUrl'
 import { getSupabase, isSupabaseConfigured } from '../lib/supabase'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -56,7 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { error } = await supabase.auth.signInWithOtp({
       email: trimmed,
       options: {
-        emailRedirectTo: window.location.origin,
+        emailRedirectTo: getAppBaseUrl(),
       },
     })
     if (error) throw error
