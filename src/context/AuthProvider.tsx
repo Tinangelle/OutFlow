@@ -58,7 +58,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       email: trimmed,
       options: {
         emailRedirectTo: getAppBaseUrl(),
+        shouldCreateUser: true,
       },
+    })
+    if (error) throw error
+  }, [])
+
+  const verifyEmailOtp = useCallback(async (email: string, token: string) => {
+    const trimmedEmail = email.trim()
+    const trimmedToken = token.trim()
+    if (!trimmedEmail) {
+      throw new Error('请输入邮箱地址。')
+    }
+    if (!trimmedToken) {
+      throw new Error('请输入邮件中的 6 位验证码。')
+    }
+
+    const supabase = getSupabase()
+    const { error } = await supabase.auth.verifyOtp({
+      email: trimmedEmail,
+      token: trimmedToken,
+      type: 'email',
     })
     if (error) throw error
   }, [])
@@ -76,9 +96,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       session,
       signInWithEmail,
+      verifyEmailOtp,
       signOut,
     }),
-    [configured, loading, user, session, signInWithEmail, signOut],
+    [configured, loading, user, session, signInWithEmail, verifyEmailOtp, signOut],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

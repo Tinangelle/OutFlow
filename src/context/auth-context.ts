@@ -7,6 +7,7 @@ export interface AuthContextValue {
   user: User | null
   session: Session | null
   signInWithEmail: (email: string) => Promise<void>
+  verifyEmailOtp: (email: string, token: string) => Promise<void>
   signOut: () => Promise<void>
 }
 

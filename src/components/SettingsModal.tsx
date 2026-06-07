@@ -32,6 +32,7 @@ import {
   fetchCloudWorkspace,
   uploadLocalWorkspaceToCloud,
 } from '../lib/cloudSync'
+import { isStandalonePwa } from '../lib/appUrl'
 import { STORAGE_KEY } from '../lib/storage'
 import { useAuth } from '../hooks/useAuth'
 import { useOutflow } from '../hooks/useOutflow'
@@ -65,6 +66,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     loading: authLoading,
     user,
     signInWithEmail,
+    verifyEmailOtp,
     signOut,
   } = useAuth()
   const { cloudSyncStatus, cloudSyncError } = useOutflow()
@@ -76,7 +78,11 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const [cloudRestoring, setCloudRestoring] = useState(false)
   const [driveConnected, setDriveConnected] = useState(isGoogleDriveAuthorized())
   const [loginEmail, setLoginEmail] = useState('')
+  const [loginOtp, setLoginOtp] = useState('')
+  const [otpSent, setOtpSent] = useState(false)
   const [sendingMagicLink, setSendingMagicLink] = useState(false)
+  const [verifyingOtp, setVerifyingOtp] = useState(false)
+  const standalonePwa = isStandalonePwa()
   const [signingOut, setSigningOut] = useState(false)
   const [supabaseUploading, setSupabaseUploading] = useState(false)
   const [supabaseRestoring, setSupabaseRestoring] = useState(false)
@@ -168,15 +174,34 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     setSendingMagicLink(true)
     try {
       await signInWithEmail(loginEmail)
-      window.alert('登录链接已发送，请查收邮件并点击链接完成登录。')
-      setLoginEmail('')
+      setOtpSent(true)
+      setLoginOtp('')
+      window.alert(
+        standalonePwa
+          ? '验证码已发送。请在本 App 内输入邮件中的 6 位数字完成登录，不要点击邮件里的链接。'
+          : '验证码已发送。可输入邮件中的 6 位数字登录，或点击邮件链接登录。',
+      )
     } catch (err) {
-      const message = err instanceof Error ? err.message : '发送登录链接失败。'
+      const message = err instanceof Error ? err.message : '发送验证码失败。'
       window.alert(message)
     } finally {
       setSendingMagicLink(false)
     }
-  }, [loginEmail, signInWithEmail])
+  }, [loginEmail, signInWithEmail, standalonePwa])
+
+  const handleVerifyOtp = useCallback(async () => {
+    setVerifyingOtp(true)
+    try {
+      await verifyEmailOtp(loginEmail, loginOtp)
+      setOtpSent(false)
+      setLoginOtp('')
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '验证码错误或已过期。'
+      window.alert(message)
+    } finally {
+      setVerifyingOtp(false)
+    }
+  }, [loginEmail, loginOtp, verifyEmailOtp])
 
   const handleSignOut = useCallback(async () => {
     setSigningOut(true)
@@ -337,9 +362,18 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
               </div>
             ) : (
               <div className="mt-3 space-y-3">
-                <p className="text-sm text-zinc-600 dark:text-zinc-400">
-                  使用邮箱 Magic Link 登录，登录状态会自动保持。
-                </p>
+                {standalonePwa ? (
+                  <p className="rounded-lg border border-amber-200/80 bg-amber-50/80 px-3 py-2 text-xs leading-relaxed text-amber-950 dark:border-amber-700/60 dark:bg-amber-950/30 dark:text-amber-100">
+                    你正在使用主屏幕 App。请用邮件里的
+                    <strong> 6 位验证码</strong>
+                    在本页登录；不要点邮件链接（链接会在浏览器打开，主屏幕 App
+                    无法共享登录状态）。
+                  </p>
+                ) : (
+                  <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                    输入邮箱获取验证码。登录后会自动保持，并与其它设备同步。
+                  </p>
+                )}
                 <label className="block">
                   <span className="sr-only">邮箱</span>
                   <input
@@ -358,8 +392,36 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                   className="flex w-full items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 py-3 text-sm font-medium text-zinc-800 transition hover:border-zinc-400 hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-60 dark:border-zinc-600 dark:bg-zinc-800/50 dark:text-zinc-100 dark:hover:border-zinc-500 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
                 >
                   <Mail className="h-4 w-4 shrink-0" />
-                  {sendingMagicLink ? '发送中…' : '发送登录链接'}
+                  {sendingMagicLink ? '发送中…' : '发送验证码'}
                 </button>
+                {otpSent ? (
+                  <div className="space-y-2 rounded-xl border border-zinc-200/80 bg-zinc-50/70 p-3 dark:border-zinc-700 dark:bg-zinc-800/40">
+                    <label className="block">
+                      <span className="mb-1.5 block text-xs font-medium text-zinc-600 dark:text-zinc-300">
+                        邮件中的 6 位验证码
+                      </span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        value={loginOtp}
+                        onChange={(e) =>
+                          setLoginOtp(e.target.value.replace(/\D/g, '').slice(0, 6))
+                        }
+                        placeholder="123456"
+                        className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2.5 text-center text-lg tracking-[0.3em] text-zinc-900 outline-none transition placeholder:tracking-normal placeholder:text-zinc-400 focus:border-zinc-400 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-500 dark:focus:border-zinc-500"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      disabled={verifyingOtp || loginOtp.length < 6}
+                      onClick={() => void handleVerifyOtp()}
+                      className="flex w-full items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white py-2.5 text-sm font-medium text-zinc-800 transition hover:border-zinc-400 hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-60 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:border-zinc-500 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+                    >
+                      {verifyingOtp ? '验证中…' : '验证并登录'}
+                    </button>
+                  </div>
+                ) : null}
               </div>
             )}
           </section>

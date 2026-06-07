@@ -4,3 +4,13 @@ export function getAppBaseUrl(): string {
   if (typeof window === 'undefined') return base
   return new URL(base, window.location.origin).href
 }
+
+/** 是否以「添加到主屏幕」的独立 PWA 方式打开 */
+export function isStandalonePwa(): boolean {
+  if (typeof window === 'undefined') return false
+  const nav = window.navigator as Navigator & { standalone?: boolean }
+  return (
+    window.matchMedia('(display-mode: standalone)').matches ||
+    nav.standalone === true
+  )
+}
