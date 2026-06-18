@@ -6,11 +6,16 @@ export interface AuthContextValue {
   loading: boolean
   user: User | null
   session: Session | null
+  /** 从邮件重置链接进入后，需设置新密码 */
+  passwordRecovery: boolean
   /** 发送邮件验证码（不传跳转链接，适合 PWA / 主屏幕 App） */
   sendEmailOtp: (email: string) => Promise<void>
   verifyEmailOtp: (email: string, token: string) => Promise<void>
   signInWithPassword: (email: string, password: string) => Promise<void>
   signUpWithPassword: (email: string, password: string) => Promise<void>
+  requestPasswordReset: (email: string) => Promise<void>
+  updatePassword: (password: string) => Promise<void>
+  clearPasswordRecovery: () => void
   signOut: () => Promise<void>
 }
 

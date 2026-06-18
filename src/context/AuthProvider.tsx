@@ -7,13 +7,31 @@ import {
 } from 'react'
 import type { Session, User } from '@supabase/supabase-js'
 import { AuthContext, type AuthContextValue } from './auth-context'
+import { getAppBaseUrl } from '../lib/appUrl'
 import { getSupabase, isSupabaseConfigured } from '../lib/supabase'
+
+function formatAuthError(err: unknown): string {
+  if (!(err instanceof Error)) return '操作失败。'
+  const msg = err.message.toLowerCase()
+  if (
+    msg.includes('already registered') ||
+    msg.includes('already been registered') ||
+    msg.includes('user already exists')
+  ) {
+    return '该邮箱已存在（可能之前用过邮件链接登录，从未设置密码）。请改用下方「通过验证码设置密码」。'
+  }
+  if (msg.includes('invalid login credentials')) {
+    return '邮箱或密码错误。若从未设置过密码，请用「通过验证码设置密码」。'
+  }
+  return err.message
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const configured = isSupabaseConfigured()
   const [loading, setLoading] = useState(configured)
   const [session, setSession] = useState<Session | null>(null)
   const [user, setUser] = useState<User | null>(null)
+  const [passwordRecovery, setPasswordRecovery] = useState(false)
 
   useEffect(() => {
     if (!configured) return
@@ -34,7 +52,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setPasswordRecovery(true)
+      }
       setSession(nextSession)
       setUser(nextSession?.user ?? null)
       setLoading(false)
@@ -76,7 +97,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       email: trimmedEmail,
       password,
     })
-    if (error) throw error
+    if (error) throw new Error(formatAuthError(error))
   }, [])
 
   const signUpWithPassword = useCallback(async (email: string, password: string) => {
@@ -93,7 +114,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       email: trimmedEmail,
       password,
     })
-    if (error) throw error
+    if (error) throw new Error(formatAuthError(error))
     if (!data.session) {
       throw new Error(
         '账号已创建，但需在邮箱中确认后才能登录。手机 App 建议改用「验证码登录」，或在 Supabase 控制台关闭 Confirm email 后使用密码注册。',
@@ -117,7 +138,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       token: trimmedToken,
       type: 'email',
     })
-    if (error) throw error
+    if (!error) return
+
+    const { error: signupError } = await supabase.auth.verifyOtp({
+      email: trimmedEmail,
+      token: trimmedToken,
+      type: 'signup',
+    })
+    if (signupError) throw new Error(formatAuthError(error))
+  }, [])
+
+  const requestPasswordReset = useCallback(async (email: string) => {
+    const trimmedEmail = email.trim()
+    if (!trimmedEmail) {
+      throw new Error('请输入邮箱地址。')
+    }
+
+    const supabase = getSupabase()
+    const { error } = await supabase.auth.resetPasswordForEmail(trimmedEmail, {
+      redirectTo: getAppBaseUrl(),
+    })
+    if (error) throw new Error(formatAuthError(error))
+  }, [])
+
+  const updatePassword = useCallback(async (password: string) => {
+    if (password.length < 6) {
+      throw new Error('密码至少 6 位。')
+    }
+
+    const supabase = getSupabase()
+    const { error } = await supabase.auth.updateUser({ password })
+    if (error) throw new Error(formatAuthError(error))
+    setPasswordRecovery(false)
+  }, [])
+
+  const clearPasswordRecovery = useCallback(() => {
+    setPasswordRecovery(false)
   }, [])
 
   const signOut = useCallback(async () => {
@@ -132,10 +188,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       user,
       session,
+      passwordRecovery,
       sendEmailOtp,
       verifyEmailOtp,
       signInWithPassword,
       signUpWithPassword,
+      requestPasswordReset,
+      updatePassword,
+      clearPasswordRecovery,
       signOut,
     }),
     [
@@ -143,10 +203,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       user,
       session,
+      passwordRecovery,
       sendEmailOtp,
       verifyEmailOtp,
       signInWithPassword,
       signUpWithPassword,
+      requestPasswordReset,
+      updatePassword,
+      clearPasswordRecovery,
       signOut,
     ],
   )

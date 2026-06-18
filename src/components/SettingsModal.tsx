@@ -65,10 +65,14 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     configured: supabaseConfigured,
     loading: authLoading,
     user,
+    passwordRecovery,
     sendEmailOtp,
     verifyEmailOtp,
     signInWithPassword,
     signUpWithPassword,
+    requestPasswordReset,
+    updatePassword,
+    clearPasswordRecovery,
     signOut,
   } = useAuth()
   const { cloudSyncStatus, cloudSyncError } = useOutflow()
@@ -83,8 +87,20 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   const [loginOtp, setLoginOtp] = useState('')
   const [loginPassword, setLoginPassword] = useState('')
   const [loginPasswordConfirm, setLoginPasswordConfirm] = useState('')
-  const [loginMode, setLoginMode] = useState<'otp' | 'password'>('otp')
-  const [passwordMode, setPasswordMode] = useState<'signin' | 'signup'>('signin')
+  const [loginMode, setLoginMode] = useState<'otp' | 'password'>(() =>
+    isStandalonePwa() ? 'password' : 'otp',
+  )
+  const [passwordMode, setPasswordMode] = useState<
+    'signin' | 'signup' | 'set-via-otp'
+  >('signin')
+  const [setPasswordPhase, setSetPasswordPhase] = useState<'otp' | 'new-password'>(
+    'otp',
+  )
+  const [showOtpSetupHelp, setShowOtpSetupHelp] = useState(false)
+  const [newPassword, setNewPassword] = useState('')
+  const [newPasswordConfirm, setNewPasswordConfirm] = useState('')
+  const [updatingPassword, setUpdatingPassword] = useState(false)
+  const [requestingReset, setRequestingReset] = useState(false)
   const [otpSent, setOtpSent] = useState(false)
   const [sendingOtp, setSendingOtp] = useState(false)
   const [verifyingOtp, setVerifyingOtp] = useState(false)
@@ -184,7 +200,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
       setOtpSent(true)
       setLoginOtp('')
       window.alert(
-        '验证码已发送。请在本页输入邮件中的 6 位数字完成登录，不要点击邮件里的链接。',
+        '验证码已发送。若邮件里只有链接、没有 6 位数字，需要在 Supabase 控制台修改邮件模板（见下方说明）。收到验证码后在本页输入，不要点邮件链接。',
       )
     } catch (err) {
       const message = err instanceof Error ? err.message : '发送验证码失败。'
@@ -217,7 +233,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
         }
         await signUpWithPassword(loginEmail, loginPassword)
         window.alert('注册成功，已登录。')
-      } else {
+      } else if (passwordMode === 'signin') {
         await signInWithPassword(loginEmail, loginPassword)
       }
       setLoginPassword('')
@@ -236,6 +252,80 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     signInWithPassword,
     signUpWithPassword,
   ])
+
+  const handleSendOtpForSetPassword = useCallback(async () => {
+    setSendingOtp(true)
+    try {
+      await sendEmailOtp(loginEmail)
+      setOtpSent(true)
+      setLoginOtp('')
+      setSetPasswordPhase('otp')
+      window.alert(
+        '验证码已发送。验证通过后可设置新密码。若邮件只有链接没有数字，需先在 Supabase 配置邮件模板。',
+      )
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '发送验证码失败。'
+      window.alert(message)
+    } finally {
+      setSendingOtp(false)
+    }
+  }, [loginEmail, sendEmailOtp])
+
+  const handleVerifyOtpForSetPassword = useCallback(async () => {
+    setVerifyingOtp(true)
+    try {
+      await verifyEmailOtp(loginEmail, loginOtp)
+      setSetPasswordPhase('new-password')
+      setLoginOtp('')
+      setOtpSent(false)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '验证码错误或已过期。'
+      window.alert(message)
+    } finally {
+      setVerifyingOtp(false)
+    }
+  }, [loginEmail, loginOtp, verifyEmailOtp])
+
+  const handleSaveNewPassword = useCallback(async () => {
+    if (newPassword !== newPasswordConfirm) {
+      window.alert('两次输入的密码不一致。')
+      return
+    }
+    setUpdatingPassword(true)
+    try {
+      await updatePassword(newPassword)
+      setNewPassword('')
+      setNewPasswordConfirm('')
+      setSetPasswordPhase('otp')
+      setPasswordMode('signin')
+      clearPasswordRecovery()
+      window.alert('密码已设置，下次可用邮箱和密码登录。')
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '设置密码失败。'
+      window.alert(message)
+    } finally {
+      setUpdatingPassword(false)
+    }
+  }, [newPassword, newPasswordConfirm, updatePassword, clearPasswordRecovery])
+
+  const handleRequestPasswordReset = useCallback(async () => {
+    if (!loginEmail.trim()) {
+      window.alert('请先输入邮箱地址。')
+      return
+    }
+    setRequestingReset(true)
+    try {
+      await requestPasswordReset(loginEmail)
+      window.alert(
+        '重置邮件已发送。请在电脑浏览器中打开邮件链接设置新密码，然后在 App 用新密码登录（不要指望在主屏幕 App 里点链接）。',
+      )
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '发送重置邮件失败。'
+      window.alert(message)
+    } finally {
+      setRequestingReset(false)
+    }
+  }, [loginEmail, requestPasswordReset])
 
   const handleSignOut = useCallback(async () => {
     setSigningOut(true)
@@ -364,6 +454,77 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                   自动同步：{cloudSyncStatusLabel(cloudSyncStatus)}
                   {cloudSyncError ? `（${cloudSyncError}）` : null}
                 </p>
+                {passwordRecovery ? (
+                  <div className="space-y-2 rounded-xl border border-amber-200/80 bg-amber-50/70 p-3 dark:border-amber-700/60 dark:bg-amber-950/30">
+                    <p className="text-xs text-amber-950 dark:text-amber-100">
+                      请设置新密码以完成重置。
+                    </p>
+                    <input
+                      type="password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="新密码（至少 6 位）"
+                      autoComplete="new-password"
+                      className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2.5 text-sm text-zinc-900 outline-none dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
+                    />
+                    <input
+                      type="password"
+                      value={newPasswordConfirm}
+                      onChange={(e) => setNewPasswordConfirm(e.target.value)}
+                      placeholder="再次输入新密码"
+                      autoComplete="new-password"
+                      className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2.5 text-sm text-zinc-900 outline-none dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
+                    />
+                    <button
+                      type="button"
+                      disabled={
+                        updatingPassword ||
+                        newPassword.length < 6 ||
+                        newPasswordConfirm.length < 6
+                      }
+                      onClick={() => void handleSaveNewPassword()}
+                      className="w-full rounded-xl border border-zinc-200 bg-white py-2.5 text-sm font-medium text-zinc-800 disabled:opacity-60 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
+                    >
+                      {updatingPassword ? '保存中…' : '保存新密码'}
+                    </button>
+                  </div>
+                ) : (
+                  <details className="rounded-xl border border-zinc-200/80 text-xs dark:border-zinc-700">
+                    <summary className="cursor-pointer px-3 py-2 font-medium text-zinc-700 dark:text-zinc-200">
+                      修改密码
+                    </summary>
+                    <div className="space-y-2 border-t border-zinc-200/80 px-3 py-2 dark:border-zinc-700">
+                      <input
+                        type="password"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        placeholder="新密码（至少 6 位）"
+                        autoComplete="new-password"
+                        className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2.5 text-sm text-zinc-900 outline-none dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
+                      />
+                      <input
+                        type="password"
+                        value={newPasswordConfirm}
+                        onChange={(e) => setNewPasswordConfirm(e.target.value)}
+                        placeholder="再次输入新密码"
+                        autoComplete="new-password"
+                        className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2.5 text-sm text-zinc-900 outline-none dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
+                      />
+                      <button
+                        type="button"
+                        disabled={
+                          updatingPassword ||
+                          newPassword.length < 6 ||
+                          newPasswordConfirm.length < 6
+                        }
+                        onClick={() => void handleSaveNewPassword()}
+                        className="w-full rounded-xl border border-zinc-200 bg-white py-2 text-sm font-medium text-zinc-800 disabled:opacity-60 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
+                      >
+                        {updatingPassword ? '保存中…' : '更新密码'}
+                      </button>
+                    </div>
+                  </details>
+                )}
                 <button
                   type="button"
                   disabled={signingOut}
@@ -493,16 +654,68 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                         {verifyingOtp ? '验证中…' : '验证并登录'}
                       </button>
                     </div>
+                    <details
+                      className="rounded-xl border border-zinc-200/80 bg-zinc-50/70 text-xs dark:border-zinc-700 dark:bg-zinc-800/40"
+                      open={showOtpSetupHelp}
+                      onToggle={(e) =>
+                        setShowOtpSetupHelp((e.currentTarget as HTMLDetailsElement).open)
+                      }
+                    >
+                      <summary className="cursor-pointer px-3 py-2 font-medium text-zinc-700 dark:text-zinc-200">
+                        只收到链接、没有验证码？
+                      </summary>
+                      <div className="space-y-2 border-t border-zinc-200/80 px-3 py-2 leading-relaxed text-zinc-600 dark:border-zinc-700 dark:text-zinc-300">
+                        <p>
+                          验证码由 Supabase 邮件模板决定，应用无法单独控制。请在
+                          Supabase 控制台 → Authentication → Email Templates
+                          中修改以下两个模板：
+                        </p>
+                        <ol className="list-decimal space-y-1 pl-4">
+                          <li>
+                            <strong>Magic Link</strong>（老用户登录用）
+                          </li>
+                          <li>
+                            <strong>Confirm signup</strong>（首次注册用）
+                          </li>
+                        </ol>
+                        <p>
+                          把正文里的{' '}
+                          <code className="rounded bg-zinc-200/80 px-1 dark:bg-zinc-700">
+                            {'{{ .ConfirmationURL }}'}
+                          </code>{' '}
+                          换成{' '}
+                          <code className="rounded bg-zinc-200/80 px-1 dark:bg-zinc-700">
+                            {'{{ .Token }}'}
+                          </code>
+                          ，并删掉所有可点击链接。
+                        </p>
+                        <pre className="overflow-x-auto rounded-lg bg-zinc-900 p-2 text-[11px] leading-relaxed text-zinc-100">
+{`<h2>OutFlow 登录验证码</h2>
+<p>请在 App 内输入以下 6 位数字，不要点击链接：</p>
+<p style="font-size:28px;font-weight:bold;letter-spacing:6px;">{{ .Token }}</p>`}
+                        </pre>
+                        <p>
+                          保存后重新发送验证码。若暂时不想改模板，可切换到「密码登录」直接注册。
+                        </p>
+                      </div>
+                    </details>
                   </>
                 ) : (
                   <>
                     <p className="text-sm text-zinc-600 dark:text-zinc-400">
                       使用邮箱和密码登录，无需打开邮件链接，适合手机主屏幕 App。
                     </p>
-                    <div className="flex gap-2 text-xs">
+                    <p className="rounded-lg border border-zinc-200/80 bg-zinc-50/70 px-3 py-2 text-xs leading-relaxed text-zinc-600 dark:border-zinc-700 dark:bg-zinc-800/40 dark:text-zinc-300">
+                      若之前用过邮件链接登录，账号已存在但<strong>没有密码</strong>
+                      。请选「通过验证码设置密码」，不要选「注册新账号」。
+                    </p>
+                    <div className="flex flex-wrap gap-2 text-xs">
                       <button
                         type="button"
-                        onClick={() => setPasswordMode('signin')}
+                        onClick={() => {
+                          setPasswordMode('signin')
+                          setSetPasswordPhase('otp')
+                        }}
                         className={`rounded-lg px-2 py-1 font-medium transition ${
                           passwordMode === 'signin'
                             ? 'bg-zinc-200 text-zinc-900 dark:bg-zinc-700 dark:text-zinc-100'
@@ -513,7 +726,10 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                       </button>
                       <button
                         type="button"
-                        onClick={() => setPasswordMode('signup')}
+                        onClick={() => {
+                          setPasswordMode('signup')
+                          setSetPasswordPhase('otp')
+                        }}
                         className={`rounded-lg px-2 py-1 font-medium transition ${
                           passwordMode === 'signup'
                             ? 'bg-zinc-200 text-zinc-900 dark:bg-zinc-700 dark:text-zinc-100'
@@ -522,7 +738,108 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                       >
                         注册新账号
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPasswordMode('set-via-otp')
+                          setSetPasswordPhase('otp')
+                        }}
+                        className={`rounded-lg px-2 py-1 font-medium transition ${
+                          passwordMode === 'set-via-otp'
+                            ? 'bg-amber-100 text-amber-950 dark:bg-amber-950/50 dark:text-amber-100'
+                            : 'text-zinc-500 hover:text-zinc-700 dark:text-zinc-400'
+                        }`}
+                      >
+                        通过验证码设置密码
+                      </button>
                     </div>
+
+                    {passwordMode === 'set-via-otp' ? (
+                      setPasswordPhase === 'otp' ? (
+                        <div className="space-y-2">
+                          <label className="block">
+                            <span className="sr-only">邮箱</span>
+                            <input
+                              type="email"
+                              value={loginEmail}
+                              onChange={(e) => setLoginEmail(e.target.value)}
+                              placeholder="your@email.com"
+                              autoComplete="email"
+                              className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2.5 text-sm text-zinc-900 outline-none dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
+                            />
+                          </label>
+                          <button
+                            type="button"
+                            disabled={sendingOtp || !loginEmail.trim()}
+                            onClick={() => void handleSendOtpForSetPassword()}
+                            className="flex w-full items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 py-3 text-sm font-medium text-zinc-800 disabled:opacity-60 dark:border-zinc-600 dark:bg-zinc-800/50 dark:text-zinc-100"
+                          >
+                            <Mail className="h-4 w-4 shrink-0" />
+                            {sendingOtp ? '发送中…' : '发送验证码'}
+                          </button>
+                          {otpSent ? (
+                            <>
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                autoComplete="one-time-code"
+                                value={loginOtp}
+                                onChange={(e) =>
+                                  setLoginOtp(
+                                    e.target.value.replace(/\D/g, '').slice(0, 6),
+                                  )
+                                }
+                                placeholder="输入 6 位验证码"
+                                className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2.5 text-center text-lg tracking-[0.3em] text-zinc-900 outline-none dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
+                              />
+                              <button
+                                type="button"
+                                disabled={verifyingOtp || loginOtp.length < 6}
+                                onClick={() => void handleVerifyOtpForSetPassword()}
+                                className="w-full rounded-xl border border-zinc-200 bg-white py-2.5 text-sm font-medium text-zinc-800 disabled:opacity-60 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
+                              >
+                                {verifyingOtp ? '验证中…' : '验证邮箱'}
+                              </button>
+                            </>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <div className="space-y-2 rounded-xl border border-zinc-200/80 bg-zinc-50/70 p-3 dark:border-zinc-700 dark:bg-zinc-800/40">
+                          <p className="text-xs text-zinc-600 dark:text-zinc-300">
+                            邮箱已验证，请设置新密码。
+                          </p>
+                          <input
+                            type="password"
+                            value={newPassword}
+                            onChange={(e) => setNewPassword(e.target.value)}
+                            placeholder="新密码（至少 6 位）"
+                            autoComplete="new-password"
+                            className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2.5 text-sm text-zinc-900 outline-none dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
+                          />
+                          <input
+                            type="password"
+                            value={newPasswordConfirm}
+                            onChange={(e) => setNewPasswordConfirm(e.target.value)}
+                            placeholder="再次输入新密码"
+                            autoComplete="new-password"
+                            className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2.5 text-sm text-zinc-900 outline-none dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
+                          />
+                          <button
+                            type="button"
+                            disabled={
+                              updatingPassword ||
+                              newPassword.length < 6 ||
+                              newPasswordConfirm.length < 6
+                            }
+                            onClick={() => void handleSaveNewPassword()}
+                            className="w-full rounded-xl border border-zinc-200 bg-white py-2.5 text-sm font-medium text-zinc-800 disabled:opacity-60 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
+                          >
+                            {updatingPassword ? '保存中…' : '保存密码并登录'}
+                          </button>
+                        </div>
+                      )
+                    ) : (
+                      <>
                     <label className="block">
                       <span className="sr-only">邮箱</span>
                       <input
@@ -578,6 +895,20 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
                           ? '注册并登录'
                           : '登录'}
                     </button>
+                    {passwordMode === 'signin' ? (
+                      <button
+                        type="button"
+                        disabled={requestingReset || !loginEmail.trim()}
+                        onClick={() => void handleRequestPasswordReset()}
+                        className="w-full text-center text-xs text-zinc-500 underline-offset-2 hover:text-zinc-700 hover:underline disabled:opacity-60 dark:text-zinc-400 dark:hover:text-zinc-200"
+                      >
+                        {requestingReset
+                          ? '发送中…'
+                          : '忘记密码？（在电脑浏览器打开邮件链接重置）'}
+                      </button>
+                    ) : null}
+                      </>
+                    )}
                   </>
                 )}
               </div>
