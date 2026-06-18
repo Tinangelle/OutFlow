@@ -6,8 +6,11 @@ export interface AuthContextValue {
   loading: boolean
   user: User | null
   session: Session | null
-  signInWithEmail: (email: string) => Promise<void>
+  /** 发送邮件验证码（不传跳转链接，适合 PWA / 主屏幕 App） */
+  sendEmailOtp: (email: string) => Promise<void>
   verifyEmailOtp: (email: string, token: string) => Promise<void>
+  signInWithPassword: (email: string, password: string) => Promise<void>
+  signUpWithPassword: (email: string, password: string) => Promise<void>
   signOut: () => Promise<void>
 }
 
